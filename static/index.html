@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BTRFS Ops</title>
+    <style>
+        :root {
+            --bg: #f0f2f5; --card: #ffffff; --text: #333; --border: #e5e7eb;
+            --accent: #2563eb; --accent-hover: #1d4ed8;
+            --danger: #dc2626; --danger-bg: #fee2e2;
+            --log-bg: #1e1e1e;
+            --modal-overlay: rgba(0, 0, 0, 0.7);
+        }
+        
+        [data-theme="dark"] {
+            --bg: #111827; --card: #1f2937; --text: #f3f4f6; --border: #374151;
+            --accent: #3b82f6; --accent-hover: #60a5fa;
+            --danger: #ef4444; --danger-bg: #7f1d1d;
+            --log-bg: #000000;
+        }
+
+        body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 20px; transition: background 0.3s; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        
+        /* Header */
+        header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        h1 { margin: 0; font-size: 1.5rem; }
+        .theme-toggle { background: none; border: 2px solid var(--border); color: var(--text); font-size: 1.2rem; cursor: pointer; padding: 5px 10px; border-radius: 8px; }
+
+        /* Grid */
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 20px; margin-bottom: 20px; }
+        .card { background: var(--card); border-radius: 12px; padding: 20px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); border: 1px solid var(--border); }
+        h2 { margin-top: 0; font-size: 1.1rem; border-bottom: 2px solid var(--border); padding-bottom: 10px; display: flex; align-items: center; gap: 8px; }
+
+        /* Form Elements */
+        .form-group { margin-bottom: 15px; }
+        label { display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 5px; opacity: 0.8; }
+        input, select { width: 100%; padding: 10px; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; box-sizing: border-box; }
+        
+        /* Buttons */
+        .btn-group { display: flex; gap: 8px; flex-wrap: wrap; }
+        button { flex: 1; padding: 10px; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; transition: 0.2s; }
+        .btn-primary { background: var(--accent); color: white; }
+        .btn-primary:hover { background: var(--accent-hover); }
+        .btn-danger { background: var(--danger); color: white; }
+        .btn-danger-outline { border: 1px solid var(--danger); background: transparent; color: var(--danger); }
+        .btn-danger-outline:hover { background: var(--danger-bg); }
+        .btn-sec { background: var(--border); color: var(--text); }
+        
+        /* Logs */
+        .log-container { display: flex; flex-direction: column; gap: 10px; }
+        .log-entry { background: var(--card); border-radius: 8px; padding: 15px; border: 1px solid var(--border); cursor: pointer; }
+        .log-header { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
+        .log-meta { font-size: 0.8rem; opacity: 0.7; display: flex; gap: 10px; margin-top: 5px; }
+        .badge { padding: 3px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: bold; }
+        
+        .status-Success { background: #dcfce7; color: #166534; }
+        .status-Failed { background: #fee2e2; color: #991b1b; }
+        .status-Running { background: #e0f2fe; color: #075985; }
+
+        [data-theme="dark"] .status-Success { background: #064e3b; color: #a7f3d0; }
+        [data-theme="dark"] .status-Failed { background: #7f1d1d; color: #fecaca; }
+        [data-theme="dark"] .status-Running { background: #0c4a6e; color: #bae6fd; }
+
+        .log-output { background: var(--log-bg); color: #10b981; padding: 10px; border-radius: 6px; font-family: monospace; font-size: 0.85rem; margin-top: 10px; display: none; white-space: pre-wrap; overflow-x: auto; }
+        .log-entry.open .log-output { display: block; }
+
+        /* Modal */
+        .modal-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: var(--modal-overlay); z-index: 1000;
+            display: none; align-items: center; justify-content: center;
+        }
+        .modal-overlay.active { display: flex; }
+        .modal-content {
+            background: var(--card); padding: 25px; border-radius: 12px;
+            width: 90%; max-width: 600px; max-height: 80vh; overflow-y: auto;
+            position: relative; box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+        }
+        .modal-close {
+            position: absolute; top: 15px; right: 15px;
+            background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--text);
+            line-height: 1; padding: 0; flex: 0;
+        }
+        .modal-body { margin-top: 15px; }
+        .modal-output {
+            background: var(--log-bg); color: #10b981; padding: 15px;
+            border-radius: 6px; font-family: monospace; font-size: 0.9rem;
+            white-space: pre-wrap; overflow-x: auto; min-height: 100px;
+        }
+
+        /* Toast */
+        .toast {
+            position: fixed; bottom: 20px; right: 20px;
+            background: var(--accent); color: white; padding: 10px 20px;
+            border-radius: 6px; opacity: 0; transition: opacity 0.3s; pointer-events: none; z-index: 2000;
+        }
+        .toast.show { opacity: 1; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🍃 BTRFS Manager</h1>
+            <button class="theme-toggle" onclick="toggleTheme()">🌗</button>
+        </header>
+
+        <!-- Config Grid -->
+        <div class="grid">
+            <div class="card">
+                <h2>⚙️ Settings</h2>
+                <form id="configForm">
+                    <div class="form-group">
+                        <label>Target Drive</label>
+                        <input type="text" id="target_drive" placeholder="/host/mnt/data">
+                    </div>
+                    <div class="form-group">
+                        <label>Snapshot Config (Src ➡️ Dest)</label>
+                        <div style="display:flex; gap:5px;">
+                            <input type="text" id="snapshot_source" placeholder="Source">
+                            <input type="text" id="snapshot_dest" placeholder="Destination">
+                        </div>
+                    </div>
+                    
+                    <div style="border-top:1px solid var(--border); margin: 15px 0;"></div>
+                    
+                    <div class="form-group">
+                        <label style="display:flex; justify-content:space-between">
+                            🗑️ Snapshot Retention
+                            <input type="checkbox" id="retention_enabled" style="width:auto">
+                        </label>
+                        <div class="btn-group">
+                            <select id="retention_mode" style="flex:1" onchange="toggleRetentionUI()">
+                                <option value="count">Keep Last (Count)</option>
+                                <option value="time">Keep Older Than (Time)</option>
+                            </select>
+                            <input type="number" id="retention_value" placeholder="10" style="width:60px">
+                            <select id="retention_unit" style="width:90px">
+                                <option value="days">Days</option>
+                                <option value="weeks">Weeks</option>
+                                <option value="months">Months</option>
+                                <option value="years">Years</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <button type="submit" id="saveBtn" class="btn-primary" style="width:100%; margin-top:10px;">Save Settings</button>
+                </form>
+            </div>
+
+            <div class="card">
+                <h2>⏱️ Schedules</h2>
+                <div id="schedulers_container"></div>
+            </div>
+        </div>
+
+        <!-- Action Grid -->
+        <div class="grid">
+            <div class="card">
+                <h2>🛠️ Maintenance</h2>
+                <div class="form-group">
+                    <label>Scrub</label>
+                    <div class="btn-group">
+                        <button class="btn-primary" onclick="doAction('scrub', 'start')">Start 🧹</button>
+                        <button class="btn-sec" onclick="doAction('scrub', 'status', true)">Status 🩺</button>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Balance</label>
+                    <div class="btn-group">
+                        <button class="btn-primary" onclick="doAction('balance', 'start')">Start ⚖️</button>
+                        <button class="btn-sec" onclick="doAction('balance', 'status', true)">Status 🩺</button>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Optimization</label>
+                    <div class="btn-group">
+                        <button class="btn-sec" onclick="doAction('defrag')">Defrag 📦</button>
+                        <button class="btn-sec" onclick="doAction('compsize', '', true)">Comp 📊</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>📸 Snapshots</h2>
+                <button class="btn-primary" style="width:100%; padding:15px; margin-bottom:20px;" onclick="doAction('snapshot')">Take Snapshot Now</button>
+                
+                <h2 style="color:var(--danger); border-color:var(--danger-bg)">⚠️ Danger Zone</h2>
+                <div class="btn-group">
+                    <button class="btn-danger-outline" onclick="clearLogs()">Clear Logs</button>
+                    <button class="btn-danger-outline" onclick="purgeAll()">🔥 Delete All Snapshots</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Logs -->
+        <h2 style="border:none; display:flex; justify-content:space-between;">
+            📋 Activity Log
+            <button class="btn-sec" style="width:auto; padding:5px 15px;" onclick="loadHistory()">Refresh</button>
+        </h2>
+        <div id="logList" class="log-container">Loading...</div>
+    </div>
+
+    <!-- Modal -->
+    <div id="modal" class="modal-overlay" onclick="closeModal(event)">
+        <div class="modal-content">
+            <button class="modal-close" onclick="closeModal(null, true)">×</button>
+            <h2 id="modalTitle" style="margin:0; border:none">Output</h2>
+            <div class="modal-body">
+                <div id="modalOutput" class="modal-output">Waiting...</div>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast" class="toast">Settings Saved</div>
+
+    <script>
+        const API = '/api';
+        let modalInterval = null;
+        let openLogIds = new Set();
+        
+        // --- Theme ---
+        if(localStorage.getItem('theme') === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
+        function toggleTheme() {
+            const current = document.documentElement.getAttribute('data-theme');
+            const target = current === 'dark' ? 'light' : 'dark';
+            document.documentElement.setAttribute('data-theme', target);
+            localStorage.setItem('theme', target);
+        }
+
+        function showToast(msg) {
+            const t = document.getElementById('toast');
+            t.innerText = msg;
+            t.classList.add('show');
+            setTimeout(() => t.classList.remove('show'), 3000);
+        }
+
+        // --- Scheduler UI ---
+        function renderSchedInput(key, title) {
+            return `
+                <div style="margin-bottom:15px; border-left:3px solid var(--border); padding-left:10px;">
+                    <label style="display:flex; justify-content:space-between">
+                        ${title}
+                        <input type="checkbox" id="${key}_enabled" style="width:auto;">
+                    </label>
+                    <div class="btn-group" style="margin-top:5px">
+                        <select id="${key}_type" onchange="toggleSched('${key}')">
+                            <option value="every_x">Every X</option>
+                            <option value="cron">Cron</option>
+                        </select>
+                        <input type="text" id="${key}_value" placeholder="15" style="flex:1">
+                        <select id="${key}_unit" style="width:90px">
+                            <option value="minutes">Mins</option>
+                            <option value="hours">Hours</option>
+                            <option value="days">Days</option>
+                        </select>
+                    </div>
+                </div>`;
+        }
+        document.getElementById('schedulers_container').innerHTML = 
+            renderSchedInput('snapshot_sched', '📸 Snapshot') +
+            renderSchedInput('scrub_sched', '🧹 Scrub') +
+            renderSchedInput('balance_sched', '⚖️ Balance');
+
+        function toggleSched(key) {
+            const type = document.getElementById(`${key}_type`).value;
+            document.getElementById(`${key}_unit`).style.display = type === 'cron' ? 'none' : 'block';
+        }
+        
+        function toggleRetentionUI() {
+            const mode = document.getElementById('retention_mode').value;
+            document.getElementById('retention_unit').style.display = mode === 'time' ? 'block' : 'none';
+        }
+
+        // --- Logic ---
+        async function loadConfig() {
+            const res = await fetch(`${API}/config`);
+            const data = await res.json();
+            
+            ['target_drive', 'snapshot_source', 'snapshot_dest'].forEach(k => document.getElementById(k).value = data[k] || '');
+
+            if(data.retention) {
+                document.getElementById('retention_enabled').checked = data.retention.enabled;
+                document.getElementById('retention_mode').value = data.retention.mode;
+                document.getElementById('retention_value').value = data.retention.value;
+                document.getElementById('retention_unit').value = data.retention.unit;
+                toggleRetentionUI();
+            }
+
+            ['snapshot_sched', 'scrub_sched', 'balance_sched'].forEach(key => {
+                const cfg = data[key];
+                if(cfg) {
+                    document.getElementById(`${key}_enabled`).checked = cfg.enabled;
+                    document.getElementById(`${key}_type`).value = cfg.type || 'every_x';
+                    document.getElementById(`${key}_value`).value = cfg.value || '';
+                    document.getElementById(`${key}_unit`).value = cfg.unit || 'minutes';
+                    toggleSched(key);
+                }
+            });
+        }
+
+        document.getElementById('configForm').onsubmit = async (e) => {
+            e.preventDefault();
+            const btn = document.getElementById('saveBtn');
+            const originalText = btn.innerText;
+            btn.innerText = "Saving...";
+            
+            const payload = {
+                target_drive: document.getElementById('target_drive').value,
+                snapshot_source: document.getElementById('snapshot_source').value,
+                snapshot_dest: document.getElementById('snapshot_dest').value,
+                retention: {
+                    enabled: document.getElementById('retention_enabled').checked,
+                    mode: document.getElementById('retention_mode').value,
+                    value: parseInt(document.getElementById('retention_value').value),
+                    unit: document.getElementById('retention_unit').value
+                }
+            };
+            ['snapshot_sched', 'scrub_sched', 'balance_sched'].forEach(key => {
+                payload[key] = {
+                    enabled: document.getElementById(`${key}_enabled`).checked,
+                    type: document.getElementById(`${key}_type`).value,
+                    value: document.getElementById(`${key}_value`).value,
+                    unit: document.getElementById(`${key}_unit`).value
+                };
+            });
+            await fetch(`${API}/config`, { method: 'POST', body: JSON.stringify(payload) });
+            btn.innerText = originalText;
+            showToast("Settings Saved");
+        };
+
+        async function doAction(type, action='', useModal=false) {
+            if(!useModal && !confirm(`Run ${type} ${action}?`)) return;
+            
+            if(useModal) {
+                openModal(`Running ${type}...`);
+            }
+
+            const url = `${API}/action/${type}` + (action ? `?action=${action}` : '');
+            const res = await fetch(url);
+            const data = await res.json();
+
+            // If we want a popup, poll the log ID
+            if(useModal && data.id) {
+                pollModal(data.id);
+            }
+
+            loadHistory();
+            if(!useModal) setTimeout(loadHistory, 1000);
+        }
+
+        // --- Modal Logic ---
+        function openModal(title) {
+            document.getElementById('modalTitle').innerText = title;
+            document.getElementById('modalOutput').innerText = "Running...";
+            document.getElementById('modal').classList.add('active');
+        }
+
+        function closeModal(e, force=false) {
+            if(force || e.target.id === 'modal') {
+                document.getElementById('modal').classList.remove('active');
+                if(modalInterval) clearInterval(modalInterval);
+            }
+        }
+
+        function pollModal(id) {
+            if(modalInterval) clearInterval(modalInterval);
+            modalInterval = setInterval(async () => {
+                const res = await fetch(`${API}/history`);
+                const history = await res.json();
+                const log = history.find(l => l.id === id);
+                if(log) {
+                    document.getElementById('modalOutput').innerText = log.output || "Running...";
+                    document.getElementById('modalTitle').innerText = `${log.emoji} ${log.type} - ${log.status}`;
+                    
+                    if(log.status !== "Running...") {
+                        clearInterval(modalInterval);
+                    }
+                }
+            }, 1000);
+        }
+
+        async function clearLogs() {
+            if(confirm("Clear all logs?")) {
+                await fetch(`${API}/logs/clear`);
+                openLogIds.clear();
+                loadHistory();
+            }
+        }
+
+        async function purgeAll() {
+            const verify = prompt("Type 'DELETE' to confirm deleting ALL snapshots in destination:");
+            if(verify === 'DELETE') {
+                await fetch(`${API}/action/purge_all`);
+                loadHistory();
+            }
+        }
+
+        // --- Log Logic ---
+        function toggleLog(id) {
+            const el = document.getElementById(`log-${id}`);
+            if(el) {
+                if(el.classList.contains('open')) {
+                    el.classList.remove('open');
+                    openLogIds.delete(id.toString());
+                } else {
+                    el.classList.add('open');
+                    openLogIds.add(id.toString());
+                }
+            }
+        }
+
+        async function loadHistory() {
+            const res = await fetch(`${API}/history`);
+            const data = await res.json();
+            const container = document.getElementById('logList');
+            
+            if(!data || data.length === 0) {
+                container.innerHTML = '<div style="text-align:center; opacity:0.6; padding:20px;">No logs yet.</div>';
+                return;
+            }
+
+            container.innerHTML = data.map(log => {
+                const statusClass = `status-${log.status.split(' ')[0]}`;
+                const isOpen = openLogIds.has(log.id.toString()) ? 'open' : '';
+                return `
+                <div id="log-${log.id}" class="log-entry ${isOpen}" onclick="toggleLog(${log.id})">
+                    <div class="log-header">
+                        <div style="font-weight:bold">${log.emoji} ${log.type}</div>
+                        <div class="badge ${statusClass}">${log.status}</div>
+                    </div>
+                    <div class="log-meta">
+                        <span>🕒 ${log.timestamp}</span>
+                        <span>⏱ ${log.duration}</span>
+                        <span style="margin-left:auto">${log.path}</span>
+                    </div>
+                    <div class="log-output">${log.output}</div>
+                </div>`;
+            }).join('');
+        }
+
+        loadConfig();
+        loadHistory();
+        setInterval(loadHistory, 5000);
+    </script>
+</body>
+</html>

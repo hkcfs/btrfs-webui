@@ -1,0 +1,16 @@
+services:
+  btrfs-manager:
+    build: .
+    container_name: btrfs_web_ui
+    privileged: true  # Required for BTRFS commands
+    environment:
+      - TZ=Asia/Kolkata  # Change to your desired timezone (e.g., Asia/Kolkata, UTC)
+    volumes:
+      # Map the host's root filesystem to /host inside the container
+      # This allows the tool to access all drives.
+      - /:/host
+      # Persist the configuration and logs
+      - ./data:/data
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
