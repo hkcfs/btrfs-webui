@@ -92,6 +92,12 @@
             white-space: pre-wrap; overflow-x: auto; min-height: 100px;
         }
 
+        /* Snap Table */
+        .snap-table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        .snap-table th, .snap-table td { text-align: left; padding: 10px; border-bottom: 1px solid var(--border); }
+        .snap-table tr:last-child td { border-bottom: none; }
+        .snap-action { text-align: right; }
+        
         /* Toast */
         .toast {
             position: fixed; bottom: 20px; right: 20px;
@@ -188,7 +194,8 @@
 
             <div class="card">
                 <h2>📸 Snapshots</h2>
-                <button class="btn-primary" style="width:100%; padding:15px; margin-bottom:20px;" onclick="doAction('snapshot')">Take Snapshot Now</button>
+                <button class="btn-primary" style="width:100%; padding:15px; margin-bottom:10px;" onclick="doAction('snapshot')">Take Snapshot Now</button>
+                <button class="btn-sec" style="width:100%; margin-bottom:20px;" onclick="openSnapshotList()">📂 View Existing Snapshots</button>
                 
                 <h2 style="color:var(--danger); border-color:var(--danger-bg)">⚠️ Danger Zone</h2>
                 <div class="btn-group">
@@ -206,13 +213,27 @@
         <div id="logList" class="log-container">Loading...</div>
     </div>
 
-    <!-- Modal -->
+    <!-- Output Modal -->
     <div id="modal" class="modal-overlay" onclick="closeModal(event)">
         <div class="modal-content">
             <button class="modal-close" onclick="closeModal(null, true)">×</button>
             <h2 id="modalTitle" style="margin:0; border:none">Output</h2>
             <div class="modal-body">
                 <div id="modalOutput" class="modal-output">Waiting...</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Snapshot List Modal -->
+    <div id="snapshotModal" class="modal-overlay" onclick="closeSnapshotModal(event)">
+        <div class="modal-content">
+            <button class="modal-close" onclick="closeSnapshotModal(null, true)">×</button>
+            <h2 style="margin:0; border:none">Existing Snapshots</h2>
+            <div class="modal-body" style="max-height:60vh; overflow-y:auto">
+                <table class="snap-table">
+                    <thead><tr><th>Name</th><th>Date</th><th>Action</th></tr></thead>
+                    <tbody id="snapListBody"><tr><td colspan="3">Loading...</td></tr></tbody>
+                </table>
             </div>
         </div>
     </div>
@@ -354,7 +375,7 @@
             if(!useModal) setTimeout(loadHistory, 1000);
         }
 
-        // --- Modal Logic ---
+        // --- Output Modal Logic ---
         function openModal(title) {
             document.getElementById('modalTitle').innerText = title;
             document.getElementById('modalOutput').innerText = "Running...";
@@ -383,6 +404,57 @@
                     }
                 }
             }, 1000);
+        }
+
+        // --- Snapshot List Modal Logic ---
+        async function openSnapshotList() {
+            document.getElementById('snapshotModal').classList.add('active');
+            await loadSnapshots();
+        }
+
+        function closeSnapshotModal(e, force=false) {
+            if(force || e.target.id === 'snapshotModal') {
+                document.getElementById('snapshotModal').classList.remove('active');
+            }
+        }
+
+        async function loadSnapshots() {
+            const tbody = document.getElementById('snapListBody');
+            tbody.innerHTML = '<tr><td colspan="3">Loading...</td></tr>';
+            
+            try {
+                const res = await fetch(`${API}/snapshots/list`);
+                if(!res.ok) throw new Error("Failed to load");
+                const list = await res.json();
+                
+                if(list.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="3" style="text-align:center; padding:20px; color:#888">No snapshots found.</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = list.map(snap => `
+                    <tr>
+                        <td style="font-family:monospace">${snap.name}</td>
+                        <td style="font-size:0.9rem; color:gray">${snap.date}</td>
+                        <td class="snap-action">
+                            <button class="btn-danger-outline" style="padding:4px 8px; font-size:0.8rem" onclick="deleteSnapshot('${snap.name}')">🗑️</button>
+                        </td>
+                    </tr>
+                `).join('');
+            } catch(e) {
+                tbody.innerHTML = `<tr><td colspan="3" style="color:red">Error: ${e.message}</td></tr>`;
+            }
+        }
+
+        async function deleteSnapshot(name) {
+            if(!confirm(`Delete snapshot '${name}' permanently?`)) return;
+            const res = await fetch(`${API}/snapshots/delete?name=${encodeURIComponent(name)}`);
+            if(res.ok) {
+                await loadSnapshots(); // Reload list
+                loadHistory(); // Reload logs in background
+            } else {
+                alert("Failed to delete snapshot");
+            }
         }
 
         async function clearLogs() {

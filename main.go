@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -87,6 +88,10 @@ func main() {
 	http.HandleFunc("/api/history", handleHistory)
 	http.HandleFunc("/api/logs/clear", handleClearLogs)
 	
+	// Snapshot Management
+	http.HandleFunc("/api/snapshots/list", handleListSnapshots)
+	http.HandleFunc("/api/snapshots/delete", handleDeleteSnapshot)
+
 	// Actions
 	http.HandleFunc("/api/action/snapshot", handleActionSnapshot)
 	http.HandleFunc("/api/action/scrub", handleActionScrub)
@@ -104,7 +109,6 @@ func main() {
 
 // --- Helper: Command Runner & Logger ---
 
-// Prints to Docker logs
 func printDockerLog(opType, msg string, args ...interface{}) {
 	timestamp := time.Now().Format(time.RFC3339)
 	formattedMsg := fmt.Sprintf(msg, args...)
@@ -131,7 +135,6 @@ func runCommandAsync(opType, emoji, path, cmdName string, args ...string) int64 
 	state.mu.Unlock()
 
 	go func() {
-		// Log Start to Docker Console
 		printDockerLog(opType, "STARTING: %s", cmdStr)
 
 		cmd := exec.Command(cmdName, args...)
@@ -139,7 +142,6 @@ func runCommandAsync(opType, emoji, path, cmdName string, args ...string) int64 
 		duration := time.Since(startTime).Round(time.Millisecond)
 		outputStr := string(output)
 
-		// Log End to Docker Console
 		printDockerLog(opType, "FINISHED in %s", duration)
 		if len(outputStr) > 0 {
 			printDockerLog(opType, "OUTPUT:\n%s", outputStr)
@@ -157,9 +159,7 @@ func runCommandAsync(opType, emoji, path, cmdName string, args ...string) int64 
 				state.History[i].Duration = duration.String()
 				state.History[i].Output = outputStr
 				
-				// Handle specific exit codes
 				if err != nil {
-					// Check for "Operation in progress" (Exit code 1 + specific text)
 					if strings.Contains(outputStr, "Operation in progress") || strings.Contains(outputStr, "inprogress") {
 						state.History[i].Status = "Warning" 
 						state.History[i].Output += "\n\n⚠️ NOTE: A scrub/balance is already running in the background."
@@ -179,6 +179,80 @@ func runCommandAsync(opType, emoji, path, cmdName string, args ...string) int64 
 
 	return entryID
 }
+
+// --- Snapshot List & Delete Handlers ---
+
+type SnapshotItem struct {
+	Name string `json:"name"`
+	Date string `json:"date"`
+}
+
+func handleListSnapshots(w http.ResponseWriter, r *http.Request) {
+	state.mu.Lock()
+	dest := state.Config.SnapshotDest
+	state.mu.Unlock()
+
+	if dest == "" {
+		http.Error(w, "Destination not configured", 400)
+		return
+	}
+
+	entries, err := os.ReadDir(dest)
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+
+	var list []SnapshotItem
+	for _, e := range entries {
+		if e.IsDir() {
+			// Try to parse date, otherwise just use mod time or generic
+			displayDate := "Unknown"
+			t, err := time.Parse(timeLayout, e.Name())
+			if err == nil {
+				displayDate = t.Format("Jan 02, 2006 15:04 MST")
+			} else {
+				info, _ := e.Info()
+				displayDate = info.ModTime().Format("Jan 02, 2006 15:04 MST")
+			}
+
+			list = append(list, SnapshotItem{
+				Name: e.Name(),
+				Date: displayDate,
+			})
+		}
+	}
+
+	// Sort by Name (which is Date format) descending
+	sort.Slice(list, func(i, j int) bool {
+		return list[i].Name > list[j].Name
+	})
+
+	json.NewEncoder(w).Encode(list)
+}
+
+func handleDeleteSnapshot(w http.ResponseWriter, r *http.Request) {
+	name := r.URL.Query().Get("name")
+	if name == "" {
+		http.Error(w, "Name required", 400)
+		return
+	}
+
+	state.mu.Lock()
+	dest := state.Config.SnapshotDest
+	state.mu.Unlock()
+
+	// Security: Clean path to prevent .. traversal
+	fullPath := filepath.Join(dest, name)
+	if filepath.Dir(fullPath) != filepath.Clean(dest) {
+		http.Error(w, "Invalid path", 403)
+		return
+	}
+
+	runCommandAsync("DELETE SNAP", "🗑️", fullPath, "btrfs", "subvolume", "delete", fullPath)
+	json.NewEncoder(w).Encode(map[string]interface{}{"status": "triggered"})
+}
+
 
 // --- Action Handlers ---
 
@@ -288,14 +362,12 @@ func performSnapshot() {
 	fullDest := fmt.Sprintf("%s/%s", strings.TrimRight(dest, "/"), name)
 	visualPath := fmt.Sprintf("%s ➡️ %s", src, name)
 
-	// Docker Log Start
 	printDockerLog("SNAPSHOT", "Creating snapshot %s -> %s", src, fullDest)
 
 	cmd := exec.Command("btrfs", "subvolume", "snapshot", "-r", src, fullDest)
 	output, err := cmd.CombinedOutput()
 	outputStr := string(output)
 
-	// Docker Log End
 	if len(outputStr) > 0 {
 		printDockerLog("SNAPSHOT", "Output:\n%s", outputStr)
 	}
