@@ -40,7 +40,7 @@
         
         /* Buttons */
         .btn-group { display: flex; gap: 8px; flex-wrap: wrap; }
-        button { flex: 1; padding: 10px; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; transition: 0.2s; }
+        button { flex: 1; padding: 10px; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; transition: 0.2s; white-space: nowrap; }
         .btn-primary { background: var(--accent); color: white; }
         .btn-primary:hover { background: var(--accent-hover); }
         .btn-danger { background: var(--danger); color: white; }
@@ -58,10 +58,12 @@
         .status-Success { background: #dcfce7; color: #166534; }
         .status-Failed { background: #fee2e2; color: #991b1b; }
         .status-Running { background: #e0f2fe; color: #075985; }
+        .status-Warning { background: #fef3c7; color: #92400e; }
 
         [data-theme="dark"] .status-Success { background: #064e3b; color: #a7f3d0; }
         [data-theme="dark"] .status-Failed { background: #7f1d1d; color: #fecaca; }
         [data-theme="dark"] .status-Running { background: #0c4a6e; color: #bae6fd; }
+        [data-theme="dark"] .status-Warning { background: #78350f; color: #fde68a; }
 
         .log-output { background: var(--log-bg); color: #10b981; padding: 10px; border-radius: 6px; font-family: monospace; font-size: 0.85rem; margin-top: 10px; display: none; white-space: pre-wrap; overflow-x: auto; }
         .log-entry.open .log-output { display: block; }
@@ -164,6 +166,7 @@
                     <div class="btn-group">
                         <button class="btn-primary" onclick="doAction('scrub', 'start')">Start 🧹</button>
                         <button class="btn-sec" onclick="doAction('scrub', 'status', true)">Status 🩺</button>
+                        <button class="btn-danger" style="flex:0" onclick="doAction('scrub', 'cancel')" title="Stop Running Scrub">🛑</button>
                     </div>
                 </div>
                 <div class="form-group">
@@ -171,6 +174,7 @@
                     <div class="btn-group">
                         <button class="btn-primary" onclick="doAction('balance', 'start')">Start ⚖️</button>
                         <button class="btn-sec" onclick="doAction('balance', 'status', true)">Status 🩺</button>
+                        <button class="btn-danger" style="flex:0" onclick="doAction('balance', 'cancel')" title="Stop Running Balance">🛑</button>
                     </div>
                 </div>
                 <div class="form-group">
@@ -331,7 +335,7 @@
         };
 
         async function doAction(type, action='', useModal=false) {
-            if(!useModal && !confirm(`Run ${type} ${action}?`)) return;
+            if(!useModal && !confirm(`${action === 'cancel' ? 'STOP' : 'Run'} ${type} ${action}?`)) return;
             
             if(useModal) {
                 openModal(`Running ${type}...`);
