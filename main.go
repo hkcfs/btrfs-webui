@@ -31,9 +31,9 @@ type ScheduleConfig struct {
 
 type RetentionConfig struct {
 	Enabled bool   `json:"enabled"`
-	Mode    string `json:"mode"`  // "count" or "time"
-	Value   int    `json:"value"` // e.g., 10 (count) or 30 (days)
-	Unit    string `json:"unit"`  // "days", "weeks", "months", "years" (only for time mode)
+	Mode    string `json:"mode"`
+	Value   int    `json:"value"`
+	Unit    string `json:"unit"`
 }
 
 type Config struct {
@@ -104,7 +104,6 @@ func main() {
 
 // --- Helper: Command Runner & Logger ---
 
-// Returns the ID of the created log entry so the caller can return it to the frontend
 func runCommandAsync(opType, emoji, path, cmdName string, args ...string) int64 {
 	state.mu.Lock()
 	startTime := time.Now()
@@ -119,7 +118,6 @@ func runCommandAsync(opType, emoji, path, cmdName string, args ...string) int64 
 		Status:    "Running...",
 		Output:    fmt.Sprintf("Command: %s %s", cmdName, strings.Join(args, " ")),
 	}
-	// Prepend
 	state.History = append([]LogEntry{entry}, state.History...)
 	state.mu.Unlock()
 
@@ -135,16 +133,23 @@ func runCommandAsync(opType, emoji, path, cmdName string, args ...string) int64 
 			if e.ID == entryID {
 				state.History[i].Duration = duration.String()
 				state.History[i].Output = string(output)
+				
+				// Handle specific exit codes
 				if err != nil {
-					state.History[i].Status = "Failed"
-					state.History[i].Output += fmt.Sprintf("\nError: %v", err)
+					// Check for "Operation in progress" (Exit code 1 + specific text)
+					if strings.Contains(string(output), "Operation in progress") || strings.Contains(string(output), "inprogress") {
+						state.History[i].Status = "Warning" // Mark as warning, not failure
+						state.History[i].Output += "\n\n⚠️ NOTE: A scrub/balance is already running in the background."
+					} else {
+						state.History[i].Status = "Failed"
+						state.History[i].Output += fmt.Sprintf("\nError: %v", err)
+					}
 				} else {
 					state.History[i].Status = "Success"
 				}
 				break
 			}
 		}
-		// Keep last 100 logs
 		if len(state.History) > 100 { state.History = state.History[:100] }
 		saveState()
 	}()
@@ -155,8 +160,6 @@ func runCommandAsync(opType, emoji, path, cmdName string, args ...string) int64 
 // --- Action Handlers ---
 
 func handleActionSnapshot(w http.ResponseWriter, r *http.Request) {
-	// Snapshot logic wraps runCommandAsync inside, so we trigger it 
-	// and return a generic success since it manages its own logging flow
 	go performSnapshot()
 	json.NewEncoder(w).Encode(map[string]interface{}{"status": "triggered", "message": "Snapshot initiated"})
 }
@@ -169,7 +172,10 @@ func handleActionScrub(w http.ResponseWriter, r *http.Request) {
 	var id int64
 	if action == "status" {
 		id = runCommandAsync("SCRUB CHECK", "🩺", path, "btrfs", "scrub", "status", path)
+	} else if action == "cancel" {
+		id = runCommandAsync("SCRUB STOP", "🛑", path, "btrfs", "scrub", "cancel", path)
 	} else {
+		// Start
 		id = runCommandAsync("SCRUB START", "🧹", path, "btrfs", "scrub", "start", "-B", path)
 	}
 	json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "id": id})
@@ -183,6 +189,8 @@ func handleActionBalance(w http.ResponseWriter, r *http.Request) {
 	var id int64
 	if action == "status" {
 		id = runCommandAsync("BALANCE CHECK", "⚖️", path, "btrfs", "balance", "status", path)
+	} else if action == "cancel" {
+		id = runCommandAsync("BALANCE STOP", "🛑", path, "btrfs", "balance", "cancel", path)
 	} else {
 		id = runCommandAsync("BALANCE START", "⚖️", path, "btrfs", "balance", "start", "--full-balance", path)
 	}
