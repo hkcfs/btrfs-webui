@@ -37,7 +37,7 @@ Docker is the easiest way to run the manager. The container requires privileged 
 ```yaml
 services:
   btrfs-manager:
-    image: ghcr.io/yourusername/btrfs-manager:latest # Or build locally
+    image: ghcr.io/hkcfs/btrfs-manager:latest # Or build locally
     container_name: btrfs_web_ui
     privileged: true
     network_mode: bridge
@@ -109,7 +109,7 @@ To build this project from source, you need Go 1.25+.
 
 1.  Clone the repository:
     ```bash
-    git clone https://github.com/yourusername/btrfs-manager.git
+    git clone https://github.com/hkcfs/btrfs-webui.git
     cd btrfs-manager
     ```
 
