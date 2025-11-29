@@ -104,11 +104,20 @@ func main() {
 
 // --- Helper: Command Runner & Logger ---
 
+// Prints to Docker logs
+func printDockerLog(opType, msg string, args ...interface{}) {
+	timestamp := time.Now().Format(time.RFC3339)
+	formattedMsg := fmt.Sprintf(msg, args...)
+	fmt.Printf("[%s] [%s] %s\n", timestamp, opType, formattedMsg)
+}
+
 func runCommandAsync(opType, emoji, path, cmdName string, args ...string) int64 {
 	state.mu.Lock()
 	startTime := time.Now()
 	entryID := time.Now().UnixNano()
 	
+	cmdStr := fmt.Sprintf("%s %s", cmdName, strings.Join(args, " "))
+
 	entry := LogEntry{
 		ID:        entryID,
 		Type:      opType,
@@ -116,15 +125,29 @@ func runCommandAsync(opType, emoji, path, cmdName string, args ...string) int64 
 		Path:      path,
 		Timestamp: startTime.Format("02-01-2006 15:04 MST"),
 		Status:    "Running...",
-		Output:    fmt.Sprintf("Command: %s %s", cmdName, strings.Join(args, " ")),
+		Output:    fmt.Sprintf("Command: %s", cmdStr),
 	}
 	state.History = append([]LogEntry{entry}, state.History...)
 	state.mu.Unlock()
 
 	go func() {
+		// Log Start to Docker Console
+		printDockerLog(opType, "STARTING: %s", cmdStr)
+
 		cmd := exec.Command(cmdName, args...)
 		output, err := cmd.CombinedOutput()
 		duration := time.Since(startTime).Round(time.Millisecond)
+		outputStr := string(output)
+
+		// Log End to Docker Console
+		printDockerLog(opType, "FINISHED in %s", duration)
+		if len(outputStr) > 0 {
+			printDockerLog(opType, "OUTPUT:\n%s", outputStr)
+		}
+		if err != nil {
+			printDockerLog(opType, "ERROR: %v", err)
+		}
+		fmt.Println("---------------------------------------------------------------")
 
 		state.mu.Lock()
 		defer state.mu.Unlock()
@@ -132,13 +155,13 @@ func runCommandAsync(opType, emoji, path, cmdName string, args ...string) int64 
 		for i, e := range state.History {
 			if e.ID == entryID {
 				state.History[i].Duration = duration.String()
-				state.History[i].Output = string(output)
+				state.History[i].Output = outputStr
 				
 				// Handle specific exit codes
 				if err != nil {
 					// Check for "Operation in progress" (Exit code 1 + specific text)
-					if strings.Contains(string(output), "Operation in progress") || strings.Contains(string(output), "inprogress") {
-						state.History[i].Status = "Warning" // Mark as warning, not failure
+					if strings.Contains(outputStr, "Operation in progress") || strings.Contains(outputStr, "inprogress") {
+						state.History[i].Status = "Warning" 
 						state.History[i].Output += "\n\n⚠️ NOTE: A scrub/balance is already running in the background."
 					} else {
 						state.History[i].Status = "Failed"
@@ -175,7 +198,6 @@ func handleActionScrub(w http.ResponseWriter, r *http.Request) {
 	} else if action == "cancel" {
 		id = runCommandAsync("SCRUB STOP", "🛑", path, "btrfs", "scrub", "cancel", path)
 	} else {
-		// Start
 		id = runCommandAsync("SCRUB START", "🧹", path, "btrfs", "scrub", "start", "-B", path)
 	}
 	json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "id": id})
@@ -218,18 +240,25 @@ func handlePurgeAllSnapshots(w http.ResponseWriter, r *http.Request) {
 		state.mu.Unlock()
 		if dest == "" { return }
 
+		printDockerLog("PURGE ALL", "Starting purge of %s", dest)
+
 		entries, _ := os.ReadDir(dest)
 		count := 0
 		for _, e := range entries {
 			if e.IsDir() {
 				_, err := time.Parse(timeLayout, e.Name())
 				if err == nil {
-					exec.Command("btrfs", "subvolume", "delete", fmt.Sprintf("%s/%s", dest, e.Name())).Run()
+					p := fmt.Sprintf("%s/%s", dest, e.Name())
+					printDockerLog("PURGE", "Deleting: %s", p)
+					exec.Command("btrfs", "subvolume", "delete", p).Run()
 					count++
 				}
 			}
 		}
-		runCommandAsync("PURGE ALL", "🔥", dest, "echo", fmt.Sprintf("Deleted %d snapshots", count))
+		
+		msg := fmt.Sprintf("Deleted %d snapshots", count)
+		printDockerLog("PURGE ALL", "Finished: %s", msg)
+		runCommandAsync("PURGE ALL", "🔥", dest, "echo", msg)
 	}()
 	json.NewEncoder(w).Encode(map[string]interface{}{"status": "triggered"})
 }
@@ -238,6 +267,7 @@ func handleClearLogs(w http.ResponseWriter, r *http.Request) {
 	state.mu.Lock()
 	state.History = []LogEntry{}
 	state.mu.Unlock()
+	printDockerLog("SYSTEM", "Logs cleared by user")
 	saveState()
 	json.NewEncoder(w).Encode(map[string]interface{}{"status": "cleared"})
 }
@@ -258,14 +288,26 @@ func performSnapshot() {
 	fullDest := fmt.Sprintf("%s/%s", strings.TrimRight(dest, "/"), name)
 	visualPath := fmt.Sprintf("%s ➡️ %s", src, name)
 
+	// Docker Log Start
+	printDockerLog("SNAPSHOT", "Creating snapshot %s -> %s", src, fullDest)
+
 	cmd := exec.Command("btrfs", "subvolume", "snapshot", "-r", src, fullDest)
 	output, err := cmd.CombinedOutput()
+	outputStr := string(output)
+
+	// Docker Log End
+	if len(outputStr) > 0 {
+		printDockerLog("SNAPSHOT", "Output:\n%s", outputStr)
+	}
+	if err != nil {
+		printDockerLog("SNAPSHOT", "Error: %v", err)
+	}
 
 	status := "Success"
-	details := string(output)
+	details := outputStr
 	if err != nil {
 		status = "Failed"
-		details = fmt.Sprintf("%s : %s", err.Error(), string(output))
+		details = fmt.Sprintf("%s : %s", err.Error(), outputStr)
 	}
 	
 	logHistory("SNAPSHOT", "📸", visualPath, status, details)
@@ -330,10 +372,12 @@ func enforceRetention(destPath string) {
 	}
 
 	if len(toDelete) > 0 {
+		printDockerLog("RETENTION", "Cleaning up %d old snapshots", len(toDelete))
 		count := 0
 		for _, name := range toDelete {
 			p := fmt.Sprintf("%s/%s", destPath, name)
 			if err := exec.Command("btrfs", "subvolume", "delete", p).Run(); err == nil {
+				printDockerLog("RETENTION", "Deleted: %s", name)
 				count++
 			}
 		}
@@ -376,8 +420,13 @@ func refreshSchedules() {
 			if cfg.Unit == "days" { unit = "d" }
 			spec = fmt.Sprintf("@every %s%s", cfg.Value, unit)
 		}
-		id, _ := state.cron.AddFunc(spec, job)
-		state.cronIDs[name] = id
+		id, err := state.cron.AddFunc(spec, job)
+		if err == nil {
+			printDockerLog("SCHEDULER", "Registered %s job: %s", name, spec)
+			state.cronIDs[name] = id
+		} else {
+			printDockerLog("SCHEDULER", "Error registering %s: %v", name, err)
+		}
 	}
 
 	addJob("snapshot", state.Config.SnapshotSched, func() { go performSnapshot() })
