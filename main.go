@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -81,6 +82,9 @@ func main() {
 	loadState()
 	state.cron.Start()
 	refreshSchedules()
+
+	// Check for missed snapshots on startup
+	go checkMissedSnapshots()
 
 	// Handlers
 	http.HandleFunc("/", handleIndex)
@@ -206,7 +210,6 @@ func handleListSnapshots(w http.ResponseWriter, r *http.Request) {
 	var list []SnapshotItem
 	for _, e := range entries {
 		if e.IsDir() {
-			// Try to parse date, otherwise just use mod time or generic
 			displayDate := "Unknown"
 			t, err := time.Parse(timeLayout, e.Name())
 			if err == nil {
@@ -223,7 +226,6 @@ func handleListSnapshots(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Sort by Name (which is Date format) descending
 	sort.Slice(list, func(i, j int) bool {
 		return list[i].Name > list[j].Name
 	})
@@ -242,7 +244,6 @@ func handleDeleteSnapshot(w http.ResponseWriter, r *http.Request) {
 	dest := state.Config.SnapshotDest
 	state.mu.Unlock()
 
-	// Security: Clean path to prevent .. traversal
 	fullPath := filepath.Join(dest, name)
 	if filepath.Dir(fullPath) != filepath.Clean(dest) {
 		http.Error(w, "Invalid path", 403)
@@ -347,6 +348,75 @@ func handleClearLogs(w http.ResponseWriter, r *http.Request) {
 }
 
 // --- Logic ---
+
+func checkMissedSnapshots() {
+	// Give the system a moment to settle
+	time.Sleep(2 * time.Second)
+
+	state.mu.Lock()
+	sched := state.Config.SnapshotSched
+	dest := state.Config.SnapshotDest
+	state.mu.Unlock()
+
+	// Only catch up if enabled and using "every_x" (cron is too ambiguous)
+	if !sched.Enabled || dest == "" || sched.Type != "every_x" {
+		return 
+	}
+
+	// Calculate config interval
+	val, err := strconv.Atoi(sched.Value)
+	if err != nil || val == 0 { val = 1 }
+	
+	var duration time.Duration
+	switch sched.Unit {
+	case "minutes":
+		duration = time.Duration(val) * time.Minute
+	case "hours":
+		duration = time.Duration(val) * time.Hour
+	case "days":
+		duration = time.Duration(val) * 24 * time.Hour
+	default:
+		return
+	}
+
+	// Find last actual snapshot on disk
+	entries, err := os.ReadDir(dest)
+	if err != nil {
+		printDockerLog("CATCHUP", "Cannot read destination to check missed snapshots: %v", err)
+		return
+	}
+
+	var lastTime time.Time
+	found := false
+
+	for _, e := range entries {
+		if e.IsDir() {
+			t, err := time.Parse(timeLayout, e.Name())
+			if err == nil {
+				if t.After(lastTime) {
+					lastTime = t
+					found = true
+				}
+			}
+		}
+	}
+
+	// If we found snapshots and the gap is larger than interval
+	if found {
+		gap := time.Since(lastTime)
+		if gap > duration {
+			printDockerLog("CATCHUP", "Missed schedule detected! Last snapshot was %s ago. Interval is %s. Triggering now.", gap, duration)
+			performSnapshot()
+		} else {
+			printDockerLog("CATCHUP", "No missed snapshots. Last was %s ago.", gap)
+		}
+	} else {
+		// Optional: If no snapshots exist at all, do we start now?
+		// Usually yes for "Every X" schedules.
+		printDockerLog("CATCHUP", "No existing snapshots found. Triggering initial snapshot.")
+		performSnapshot()
+	}
+}
 
 func performSnapshot() {
 	state.mu.Lock()
@@ -488,9 +558,16 @@ func refreshSchedules() {
 		spec := cfg.Value
 		if cfg.Type == "every_x" {
 			unit := "m"
-			if cfg.Unit == "hours" { unit = "h" }
-			if cfg.Unit == "days" { unit = "d" }
-			spec = fmt.Sprintf("@every %s%s", cfg.Value, unit)
+			// Convert Days to Hours for compatibility
+			if cfg.Unit == "days" {
+				val, _ := strconv.Atoi(cfg.Value)
+				// Overwrite spec value logic just for the cron registration
+				// We don't change cfg.Value permanently to keep UI consistent
+				spec = fmt.Sprintf("@every %dh", val * 24)
+			} else {
+				if cfg.Unit == "hours" { unit = "h" }
+				spec = fmt.Sprintf("@every %s%s", cfg.Value, unit)
+			}
 		}
 		id, err := state.cron.AddFunc(spec, job)
 		if err == nil {
