@@ -34,14 +34,10 @@ var State = AppState{
 	},
 }
 
-// Log to Docker Console based on Level
 func PrintConsole(level string, msg string, args ...interface{}) {
 	currentLevel := State.Config.LogLevel
 	if currentLevel == config.LogLevelNone { return }
-	
-	// If message is verbose but config is default, skip
 	if level == config.LogLevelVerbose && currentLevel == config.LogLevelDefault { return }
-
 	timestamp := time.Now().Format(time.RFC3339)
 	fmt.Printf("[%s] [%s] %s\n", timestamp, level, fmt.Sprintf(msg, args...))
 }
@@ -66,7 +62,6 @@ func RunCommandAsync(opType, emoji, path, cmdName string, args ...string) int64 
 
 	go func() {
 		PrintConsole(config.LogLevelVerbose, "EXEC: %s", cmdStr)
-		
 		cmd := exec.Command(cmdName, args...)
 		output, err := cmd.CombinedOutput()
 		duration := time.Since(startTime).Round(time.Millisecond)
@@ -75,7 +70,6 @@ func RunCommandAsync(opType, emoji, path, cmdName string, args ...string) int64 
 		status := "Success"
 		if err != nil { status = "Failed" }
 
-		// Log result to console
 		if status == "Failed" {
 			PrintConsole(config.LogLevelDefault, "ERROR %s: %v", opType, err)
 		} else {
@@ -88,7 +82,6 @@ func RunCommandAsync(opType, emoji, path, cmdName string, args ...string) int64 
 			if e.ID == entryID {
 				State.History[i].Duration = duration.String()
 				State.History[i].Output = outputStr
-				
 				if err != nil {
 					if strings.Contains(outputStr, "Operation in progress") || strings.Contains(outputStr, "inprogress") {
 						State.History[i].Status = "Warning"
@@ -120,5 +113,35 @@ func LoadState() {
 		json.Unmarshal(data, &loaded)
 		State.Config = loaded.Config
 		State.History = loaded.History
+
+		// --- MIGRATION LOGIC ---
+		// If jobs list is empty BUT we have old snapshot settings, migrate them.
+		if len(State.Config.Jobs) == 0 && State.Config.SnapshotSource != "" {
+			fmt.Println("Converting legacy configuration to new Job format...")
+			
+			// Build retention from pointer or default
+			ret := config.RetentionConfig{Enabled: false, Mode: "count", Unit: "days", Value: 5}
+			if State.Config.Retention != nil { ret = *State.Config.Retention }
+
+			// Build schedule from pointer or default
+			sched := config.ScheduleConfig{Enabled: false, Unit: "minutes", Value: "15", Type: "every_x"}
+			if State.Config.SnapshotSched != nil { sched = *State.Config.SnapshotSched }
+
+			newJob := config.BackupJob{
+				ID:        "default_migrated",
+				Name:      "Default Backup",
+				Source:    State.Config.SnapshotSource,
+				Dest:      State.Config.SnapshotDest,
+				Schedule:  sched,
+				Retention: ret,
+			}
+			State.Config.Jobs = append(State.Config.Jobs, newJob)
+			
+			// Clear legacy fields to prevent re-migration
+			State.Config.SnapshotSource = ""
+			State.Config.SnapshotDest = ""
+			
+			SaveState()
+		}
 	}
 }
