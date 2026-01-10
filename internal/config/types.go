@@ -44,4 +44,10 @@ type GlobalConfig struct {
 	Jobs         []BackupJob    `json:"jobs"`
 	ScrubSched   ScheduleConfig `json:"scrub_sched"`
 	BalanceSched ScheduleConfig `json:"balance_sched"`
+
+	// Legacy fields for migration (Must match old config.json structure)
+	SnapshotSource string           `json:"snapshot_source,omitempty"`
+	SnapshotDest   string           `json:"snapshot_dest,omitempty"`
+	SnapshotSched  *ScheduleConfig  `json:"snapshot_sched,omitempty"`
+	Retention      *RetentionConfig `json:"retention,omitempty"`
 }
