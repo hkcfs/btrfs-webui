@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"embed"
 	"encoding/json"
 	"fmt"
@@ -38,6 +39,7 @@ type RetentionConfig struct {
 	Unit    string `json:"unit"`
 }
 
+// RESTORED: Single Configuration Structure
 type Config struct {
 	TargetDrive    string          `json:"target_drive"`
 	SnapshotSource string          `json:"snapshot_source"`
@@ -72,6 +74,8 @@ var state = AppState{
 	cronIDs: make(map[string]cron.EntryID),
 	Config: Config{
 		SnapshotSched: ScheduleConfig{Unit: "minutes"},
+		ScrubSched:    ScheduleConfig{Unit: "days"},
+		BalanceSched:  ScheduleConfig{Unit: "days"},
 		Retention:     RetentionConfig{Unit: "days", Mode: "count", Value: 5},
 	},
 }
@@ -91,6 +95,14 @@ func main() {
 	http.HandleFunc("/api/config", handleConfig)
 	http.HandleFunc("/api/history", handleHistory)
 	http.HandleFunc("/api/logs/clear", handleClearLogs)
+
+	// NEW FEATURES (Storage, Health, Browser)
+	http.HandleFunc("/api/storage/usage", handleStorageUsage)
+	http.HandleFunc("/api/health/smart", handleSmartData)
+	http.HandleFunc("/api/health/test", handleSmartTest)
+	http.HandleFunc("/api/health/btrfs", handleBtrfsStats)
+	http.HandleFunc("/api/browser/list", handleBrowserList)
+	http.HandleFunc("/api/browser/download", handleBrowserDownload)
 	
 	// Snapshot Management
 	http.HandleFunc("/api/snapshots/list", handleListSnapshots)
@@ -115,15 +127,13 @@ func main() {
 
 func printDockerLog(opType, msg string, args ...interface{}) {
 	timestamp := time.Now().Format(time.RFC3339)
-	formattedMsg := fmt.Sprintf(msg, args...)
-	fmt.Printf("[%s] [%s] %s\n", timestamp, opType, formattedMsg)
+	fmt.Printf("[%s] [%s] %s\n", timestamp, opType, fmt.Sprintf(msg, args...))
 }
 
 func runCommandAsync(opType, emoji, path, cmdName string, args ...string) int64 {
 	state.mu.Lock()
 	startTime := time.Now()
 	entryID := time.Now().UnixNano()
-	
 	cmdStr := fmt.Sprintf("%s %s", cmdName, strings.Join(args, " "))
 
 	entry := LogEntry{
@@ -140,33 +150,26 @@ func runCommandAsync(opType, emoji, path, cmdName string, args ...string) int64 
 
 	go func() {
 		printDockerLog(opType, "STARTING: %s", cmdStr)
-
 		cmd := exec.Command(cmdName, args...)
 		output, err := cmd.CombinedOutput()
 		duration := time.Since(startTime).Round(time.Millisecond)
 		outputStr := string(output)
 
 		printDockerLog(opType, "FINISHED in %s", duration)
-		if len(outputStr) > 0 {
-			printDockerLog(opType, "OUTPUT:\n%s", outputStr)
-		}
 		if err != nil {
 			printDockerLog(opType, "ERROR: %v", err)
 		}
-		fmt.Println("---------------------------------------------------------------")
-
+		
 		state.mu.Lock()
 		defer state.mu.Unlock()
-		
 		for i, e := range state.History {
 			if e.ID == entryID {
 				state.History[i].Duration = duration.String()
 				state.History[i].Output = outputStr
-				
 				if err != nil {
 					if strings.Contains(outputStr, "Operation in progress") || strings.Contains(outputStr, "inprogress") {
 						state.History[i].Status = "Warning" 
-						state.History[i].Output += "\n\n⚠️ NOTE: A scrub/balance is already running in the background."
+						state.History[i].Output += "\n\n⚠️ NOTE: A background operation is already running."
 					} else {
 						state.History[i].Status = "Failed"
 						state.History[i].Output += fmt.Sprintf("\nError: %v", err)
@@ -180,16 +183,174 @@ func runCommandAsync(opType, emoji, path, cmdName string, args ...string) int64 
 		if len(state.History) > 100 { state.History = state.History[:100] }
 		saveState()
 	}()
-
 	return entryID
 }
 
-// --- Snapshot List & Delete Handlers ---
+// THIS WAS MISSING
+func logHistory(opType, emoji, path, status, output string) {
+	state.mu.Lock()
+	defer state.mu.Unlock()
+	entry := LogEntry{
+		ID:        time.Now().UnixNano(),
+		Type:      opType,
+		Emoji:     emoji,
+		Path:      path,
+		Timestamp: time.Now().Format("02-01-2006 15:04 MST"),
+		Status:    status,
+		Output:    output,
+		Duration:  "0s", // Synchronous or already finished tasks
+	}
+	state.History = append([]LogEntry{entry}, state.History...)
+	if len(state.History) > 100 { state.History = state.History[:100] }
+	saveState()
+}
+
+// --- NEW FEATURE HANDLERS ---
+
+func handleStorageUsage(w http.ResponseWriter, r *http.Request) {
+	path := state.Config.TargetDrive
+	if path == "" { http.Error(w, "Target drive not set", 400); return }
+
+	out, err := exec.Command("btrfs", "filesystem", "usage", "-b", path).Output()
+	if err != nil { http.Error(w, err.Error(), 500); return }
+
+	text := string(out)
+	parseBytes := func(key string) int64 {
+		scanner := bufio.NewScanner(strings.NewReader(text))
+		for scanner.Scan() {
+			line := strings.TrimSpace(scanner.Text())
+			if strings.HasPrefix(line, key) {
+				parts := strings.Fields(line)
+				if len(parts) >= 3 {
+					val, _ := strconv.ParseInt(parts[len(parts)-1], 10, 64)
+					return val
+				}
+			}
+		}
+		return 0
+	}
+
+	resp := map[string]int64{
+		"device_size": parseBytes("Device size:"),
+		"device_allocated": parseBytes("Device allocated:"),
+		"device_unallocated": parseBytes("Device unallocated:"),
+		"used": parseBytes("Used:"),
+		"free": parseBytes("Free (estimated):"),
+	}
+	json.NewEncoder(w).Encode(resp)
+}
+
+func handleSmartData(w http.ResponseWriter, r *http.Request) {
+	path := state.Config.TargetDrive
+	if path == "" { http.Error(w, "Target drive not set", 400); return }
+	
+	dfOut, _ := exec.Command("df", path).Output()
+	lines := strings.Split(strings.TrimSpace(string(dfOut)), "\n")
+	if len(lines) < 2 { http.Error(w, "Could not resolve device", 500); return }
+	
+	device := strings.Fields(lines[1])[0]
+	baseDevice := strings.TrimRight(device, "0123456789")
+
+	cmd := exec.Command("smartctl", "-a", "-j", baseDevice)
+	out, _ := cmd.CombinedOutput()
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(out)
+}
+
+func handleSmartTest(w http.ResponseWriter, r *http.Request) {
+	testType := r.URL.Query().Get("type")
+	path := state.Config.TargetDrive
+	
+	dfOut, _ := exec.Command("df", path).Output()
+	lines := strings.Split(strings.TrimSpace(string(dfOut)), "\n")
+	device := strings.Fields(lines[1])[0]
+	baseDevice := strings.TrimRight(device, "0123456789")
+
+	id := runCommandAsync("SMART TEST", "🩺", baseDevice, "smartctl", "-t", testType, baseDevice)
+	json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "id": id})
+}
+
+func handleBtrfsStats(w http.ResponseWriter, r *http.Request) {
+	path := state.Config.TargetDrive
+	if path == "" { http.Error(w, "Target drive not set", 400); return }
+	out, err := exec.Command("btrfs", "device", "stats", path).CombinedOutput()
+	if err != nil { http.Error(w, string(out), 500); return }
+	
+	stats := make(map[string]map[string]int)
+	scanner := bufio.NewScanner(strings.NewReader(string(out)))
+	for scanner.Scan() {
+		parts := strings.Fields(scanner.Text())
+		if len(parts) >= 2 {
+			dev := strings.TrimSuffix(strings.TrimPrefix(parts[0], "["), "].")
+			key := parts[0][strings.LastIndex(parts[0], ".")+1:]
+			val, _ := strconv.Atoi(parts[1])
+			if _, ok := stats[dev]; !ok { stats[dev] = make(map[string]int) }
+			stats[dev][key] = val
+		}
+	}
+	json.NewEncoder(w).Encode(stats)
+}
+
+func handleBrowserList(w http.ResponseWriter, r *http.Request) {
+	reqPath := r.URL.Query().Get("path")
+	if reqPath == "" { http.Error(w, "Path required", 400); return }
+
+	// SECURITY: Ensure browsing inside Destination
+	state.mu.Lock()
+	dest := state.Config.SnapshotDest
+	state.mu.Unlock()
+	
+	if dest == "" || !strings.HasPrefix(filepath.Clean(reqPath), filepath.Clean(dest)) {
+		http.Error(w, "Access Denied", 403)
+		return
+	}
+
+	entries, err := os.ReadDir(reqPath)
+	if err != nil { http.Error(w, err.Error(), 500); return }
+
+	type FileItem struct {
+		Name  string `json:"name"`
+		IsDir bool   `json:"is_dir"`
+		Size  int64  `json:"size"`
+		Path  string `json:"path"`
+	}
+	var files []FileItem
+	for _, e := range entries {
+		info, _ := e.Info()
+		files = append(files, FileItem{
+			Name: e.Name(),
+			IsDir: e.IsDir(),
+			Size: info.Size(),
+			Path: filepath.Join(reqPath, e.Name()),
+		})
+	}
+	sort.Slice(files, func(i, j int) bool {
+		if files[i].IsDir != files[j].IsDir { return files[i].IsDir }
+		return files[i].Name < files[j].Name
+	})
+	json.NewEncoder(w).Encode(files)
+}
+
+func handleBrowserDownload(w http.ResponseWriter, r *http.Request) {
+	reqPath := r.URL.Query().Get("path")
+	state.mu.Lock()
+	dest := state.Config.SnapshotDest
+	state.mu.Unlock()
+	
+	if dest == "" || !strings.HasPrefix(filepath.Clean(reqPath), filepath.Clean(dest)) {
+		http.Error(w, "Access Denied", 403)
+		return
+	}
+	http.ServeFile(w, r, reqPath)
+}
+
+// --- Original Snapshot Logic (Restored) ---
 
 type SnapshotItem struct {
 	Name    string    `json:"name"`
 	Date    string    `json:"date"`
-	SortKey time.Time `json:"-"` // Hidden field used only for sorting
+	SortKey time.Time `json:"-"`
+	Path    string    `json:"path"`
 }
 
 func handleListSnapshots(w http.ResponseWriter, r *http.Request) {
@@ -197,83 +358,212 @@ func handleListSnapshots(w http.ResponseWriter, r *http.Request) {
 	dest := state.Config.SnapshotDest
 	state.mu.Unlock()
 
-	if dest == "" {
-		http.Error(w, "Destination not configured", 400)
-		return
-	}
-
+	if dest == "" { http.Error(w, "Destination not configured", 400); return }
 	entries, err := os.ReadDir(dest)
-	if err != nil {
-		http.Error(w, err.Error(), 500)
-		return
-	}
+	if err != nil { http.Error(w, err.Error(), 500); return }
 
 	var list []SnapshotItem
 	for _, e := range entries {
 		if e.IsDir() {
-			displayDate := "Unknown"
-			
-			// Parse the timestamp from the folder name
 			t, err := time.Parse(timeLayout, e.Name())
-			
-			// Fallback if parsing fails (e.g., manual folders)
-			if err != nil {
+			if err != nil { 
 				info, _ := e.Info()
-				t = info.ModTime()
+				t = info.ModTime() 
 			}
-
-			displayDate = t.Format("Jan 02, 2006 15:04 MST")
-
 			list = append(list, SnapshotItem{
 				Name:    e.Name(),
-				Date:    displayDate,
-				SortKey: t, // Store the actual time object for sorting
+				Date:    t.Format("Jan 02, 2006 15:04 MST"),
+				SortKey: t,
+				Path:    filepath.Join(dest, e.Name()),
 			})
 		}
 	}
-
-	// Sort by Time descending (Newest First)
-	sort.Slice(list, func(i, j int) bool {
-		return list[i].SortKey.After(list[j].SortKey)
-	})
-
+	sort.Slice(list, func(i, j int) bool { return list[i].SortKey.After(list[j].SortKey) })
 	json.NewEncoder(w).Encode(list)
 }
 
 func handleDeleteSnapshot(w http.ResponseWriter, r *http.Request) {
-	name := r.URL.Query().Get("name")
-	if name == "" {
-		http.Error(w, "Name required", 400)
-		return
-	}
-
+	path := r.URL.Query().Get("path")
 	state.mu.Lock()
 	dest := state.Config.SnapshotDest
 	state.mu.Unlock()
 
-	fullPath := filepath.Join(dest, name)
-	if filepath.Dir(fullPath) != filepath.Clean(dest) {
-		http.Error(w, "Invalid path", 403)
+	if path == "" || dest == "" || !strings.HasPrefix(filepath.Clean(path), filepath.Clean(dest)) {
+		http.Error(w, "Forbidden", 403)
 		return
 	}
-
-	runCommandAsync("DELETE SNAP", "🗑️", fullPath, "btrfs", "subvolume", "delete", fullPath)
+	runCommandAsync("DELETE SNAP", "🗑️", path, "btrfs", "subvolume", "delete", path)
 	json.NewEncoder(w).Encode(map[string]interface{}{"status": "triggered"})
 }
 
-
-// --- Action Handlers ---
-
 func handleActionSnapshot(w http.ResponseWriter, r *http.Request) {
 	go performSnapshot()
-	json.NewEncoder(w).Encode(map[string]interface{}{"status": "triggered", "message": "Snapshot initiated"})
+	json.NewEncoder(w).Encode(map[string]interface{}{"status": "triggered"})
 }
+
+func performSnapshot() {
+	state.mu.Lock()
+	src := state.Config.SnapshotSource
+	dest := state.Config.SnapshotDest
+	state.mu.Unlock()
+
+	if src == "" || dest == "" { return }
+	os.MkdirAll(dest, 0755)
+
+	now := time.Now()
+	name := now.Format(timeLayout)
+	fullDest := fmt.Sprintf("%s/%s", strings.TrimRight(dest, "/"), name)
+	visualPath := fmt.Sprintf("%s ➡️ %s", src, name)
+
+	printDockerLog("SNAPSHOT", "Creating snapshot %s -> %s", src, fullDest)
+
+	cmd := exec.Command("btrfs", "subvolume", "snapshot", "-r", src, fullDest)
+	output, err := cmd.CombinedOutput()
+	outputStr := string(output)
+
+	status := "Success"
+	if err != nil { status = "Failed" }
+	
+	logHistory("SNAPSHOT", "📸", visualPath, status, outputStr)
+
+	if status == "Success" { enforceRetention(dest) }
+}
+
+func enforceRetention(destPath string) {
+	state.mu.Lock()
+	cfg := state.Config.Retention
+	state.mu.Unlock()
+
+	if !cfg.Enabled { return }
+	entries, err := os.ReadDir(destPath)
+	if err != nil { return }
+
+	type SnapInfo struct {
+		Name string
+		Time time.Time
+	}
+	var snaps []SnapInfo
+	for _, e := range entries {
+		if !e.IsDir() { continue }
+		t, err := time.Parse(timeLayout, e.Name())
+		if err == nil { snaps = append(snaps, SnapInfo{Name: e.Name(), Time: t}) }
+	}
+	sort.Slice(snaps, func(i, j int) bool { return snaps[i].Time.After(snaps[j].Time) })
+
+	var toDelete []string
+	if cfg.Mode == "count" {
+		if len(snaps) > cfg.Value {
+			for _, s := range snaps[cfg.Value:] { toDelete = append(toDelete, s.Name) }
+		}
+	} else if cfg.Mode == "time" {
+		var cutoff time.Time
+		now := time.Now()
+		switch cfg.Unit {
+		case "days": cutoff = now.AddDate(0, 0, -cfg.Value)
+		case "weeks": cutoff = now.AddDate(0, 0, -cfg.Value*7)
+		case "months": cutoff = now.AddDate(0, -cfg.Value, 0)
+		case "years": cutoff = now.AddDate(-cfg.Value, 0, 0)
+		}
+		for _, s := range snaps {
+			if s.Time.Before(cutoff) { toDelete = append(toDelete, s.Name) }
+		}
+	}
+
+	if len(toDelete) > 0 {
+		count := 0
+		for _, name := range toDelete {
+			p := fmt.Sprintf("%s/%s", destPath, name)
+			if err := exec.Command("btrfs", "subvolume", "delete", p).Run(); err == nil { count++ }
+		}
+		logHistory("RETENTION", "🗑️", destPath, "Success", fmt.Sprintf("Cleaned up %d old snapshots", count))
+	}
+}
+
+// --- Scheduler ---
+
+func checkMissedSnapshots() {
+	time.Sleep(2 * time.Second)
+	state.mu.Lock()
+	sched := state.Config.SnapshotSched
+	dest := state.Config.SnapshotDest
+	state.mu.Unlock()
+
+	if !sched.Enabled || dest == "" || sched.Type != "every_x" { return }
+
+	val, _ := strconv.Atoi(sched.Value)
+	if val == 0 { val = 1 }
+	var duration time.Duration
+	switch sched.Unit {
+	case "minutes": duration = time.Duration(val) * time.Minute
+	case "hours": duration = time.Duration(val) * time.Hour
+	case "days": duration = time.Duration(val) * 24 * time.Hour
+	}
+
+	entries, err := os.ReadDir(dest)
+	if err != nil { return }
+	var lastTime time.Time
+	found := false
+	for _, e := range entries {
+		if e.IsDir() {
+			t, err := time.Parse(timeLayout, e.Name())
+			if err == nil && t.After(lastTime) {
+				lastTime = t; found = true
+			}
+		}
+	}
+
+	if found {
+		if time.Since(lastTime) > duration {
+			printDockerLog("CATCHUP", "Missed schedule detected! Triggering now.")
+			performSnapshot()
+		}
+	} else {
+		printDockerLog("CATCHUP", "No snapshots found. Triggering initial.")
+		performSnapshot()
+	}
+}
+
+func refreshSchedules() {
+	state.mu.Lock()
+	defer state.mu.Unlock()
+	for _, id := range state.cronIDs { state.cron.Remove(id) }
+	state.cronIDs = make(map[string]cron.EntryID)
+
+	addJob := func(name string, cfg ScheduleConfig, job func()) {
+		if !cfg.Enabled { return }
+		spec := cfg.Value
+		if cfg.Type == "every_x" {
+			val, _ := strconv.Atoi(cfg.Value)
+			unit := "m"
+			if cfg.Unit == "days" { spec = fmt.Sprintf("@every %dh", val * 24) } else {
+				if cfg.Unit == "hours" { unit = "h" }
+				spec = fmt.Sprintf("@every %d%s", val, unit)
+			}
+		}
+		id, err := state.cron.AddFunc(spec, job)
+		if err == nil {
+			printDockerLog("SCHEDULER", "Registered %s: %s", name, spec)
+			state.cronIDs[name] = id
+		}
+	}
+
+	addJob("snapshot", state.Config.SnapshotSched, func() { go performSnapshot() })
+	addJob("scrub", state.Config.ScrubSched, func() {
+		p := state.Config.TargetDrive
+		if p != "" { runCommandAsync("AUTO SCRUB", "🧹", p, "btrfs", "scrub", "start", "-B", p) }
+	})
+	addJob("balance", state.Config.BalanceSched, func() {
+		p := state.Config.TargetDrive
+		if p != "" { runCommandAsync("AUTO BALANCE", "⚖️", p, "btrfs", "balance", "start", "--full-balance", p) }
+	})
+}
+
+// --- Standard Handlers ---
 
 func handleActionScrub(w http.ResponseWriter, r *http.Request) {
 	action := r.URL.Query().Get("action")
 	path := state.Config.TargetDrive
 	if path == "" { http.Error(w, "Target drive not set", 400); return }
-
 	var id int64
 	if action == "status" {
 		id = runCommandAsync("SCRUB CHECK", "🩺", path, "btrfs", "scrub", "status", path)
@@ -289,7 +579,6 @@ func handleActionBalance(w http.ResponseWriter, r *http.Request) {
 	action := r.URL.Query().Get("action")
 	path := state.Config.TargetDrive
 	if path == "" { http.Error(w, "Target drive not set", 400); return }
-
 	var id int64
 	if action == "status" {
 		id = runCommandAsync("BALANCE CHECK", "⚖️", path, "btrfs", "balance", "status", path)
@@ -321,273 +610,20 @@ func handlePurgeAllSnapshots(w http.ResponseWriter, r *http.Request) {
 		dest := state.Config.SnapshotDest
 		state.mu.Unlock()
 		if dest == "" { return }
-
-		printDockerLog("PURGE ALL", "Starting purge of %s", dest)
-
 		entries, _ := os.ReadDir(dest)
 		count := 0
 		for _, e := range entries {
 			if e.IsDir() {
-				_, err := time.Parse(timeLayout, e.Name())
-				if err == nil {
-					p := fmt.Sprintf("%s/%s", dest, e.Name())
-					printDockerLog("PURGE", "Deleting: %s", p)
-					exec.Command("btrfs", "subvolume", "delete", p).Run()
+				if _, err := time.Parse(timeLayout, e.Name()); err == nil {
+					exec.Command("btrfs", "subvolume", "delete", filepath.Join(dest, e.Name())).Run()
 					count++
 				}
 			}
 		}
-		
-		msg := fmt.Sprintf("Deleted %d snapshots", count)
-		printDockerLog("PURGE ALL", "Finished: %s", msg)
-		runCommandAsync("PURGE ALL", "🔥", dest, "echo", msg)
+		runCommandAsync("PURGE ALL", "🔥", dest, "echo", fmt.Sprintf("Deleted %d snapshots", count))
 	}()
 	json.NewEncoder(w).Encode(map[string]interface{}{"status": "triggered"})
 }
-
-func handleClearLogs(w http.ResponseWriter, r *http.Request) {
-	state.mu.Lock()
-	state.History = []LogEntry{}
-	state.mu.Unlock()
-	printDockerLog("SYSTEM", "Logs cleared by user")
-	saveState()
-	json.NewEncoder(w).Encode(map[string]interface{}{"status": "cleared"})
-}
-
-// --- Logic ---
-
-func checkMissedSnapshots() {
-	time.Sleep(2 * time.Second)
-
-	state.mu.Lock()
-	sched := state.Config.SnapshotSched
-	dest := state.Config.SnapshotDest
-	state.mu.Unlock()
-
-	if !sched.Enabled || dest == "" || sched.Type != "every_x" {
-		return 
-	}
-
-	val, err := strconv.Atoi(sched.Value)
-	if err != nil || val == 0 { val = 1 }
-	
-	var duration time.Duration
-	switch sched.Unit {
-	case "minutes":
-		duration = time.Duration(val) * time.Minute
-	case "hours":
-		duration = time.Duration(val) * time.Hour
-	case "days":
-		duration = time.Duration(val) * 24 * time.Hour
-	default:
-		return
-	}
-
-	entries, err := os.ReadDir(dest)
-	if err != nil {
-		printDockerLog("CATCHUP", "Cannot read destination to check missed snapshots: %v", err)
-		return
-	}
-
-	var lastTime time.Time
-	found := false
-
-	for _, e := range entries {
-		if e.IsDir() {
-			t, err := time.Parse(timeLayout, e.Name())
-			if err == nil {
-				if t.After(lastTime) {
-					lastTime = t
-					found = true
-				}
-			}
-		}
-	}
-
-	if found {
-		gap := time.Since(lastTime)
-		if gap > duration {
-			printDockerLog("CATCHUP", "Missed schedule detected! Last snapshot was %s ago. Interval is %s. Triggering now.", gap, duration)
-			performSnapshot()
-		} else {
-			printDockerLog("CATCHUP", "No missed snapshots. Last was %s ago.", gap)
-		}
-	} else {
-		printDockerLog("CATCHUP", "No existing snapshots found. Triggering initial snapshot.")
-		performSnapshot()
-	}
-}
-
-func performSnapshot() {
-	state.mu.Lock()
-	src := state.Config.SnapshotSource
-	dest := state.Config.SnapshotDest
-	state.mu.Unlock()
-
-	if src == "" || dest == "" { return }
-	os.MkdirAll(dest, 0755)
-
-	now := time.Now()
-	name := now.Format(timeLayout)
-	fullDest := fmt.Sprintf("%s/%s", strings.TrimRight(dest, "/"), name)
-	visualPath := fmt.Sprintf("%s ➡️ %s", src, name)
-
-	printDockerLog("SNAPSHOT", "Creating snapshot %s -> %s", src, fullDest)
-
-	cmd := exec.Command("btrfs", "subvolume", "snapshot", "-r", src, fullDest)
-	output, err := cmd.CombinedOutput()
-	outputStr := string(output)
-
-	if len(outputStr) > 0 {
-		printDockerLog("SNAPSHOT", "Output:\n%s", outputStr)
-	}
-	if err != nil {
-		printDockerLog("SNAPSHOT", "Error: %v", err)
-	}
-
-	status := "Success"
-	details := outputStr
-	if err != nil {
-		status = "Failed"
-		details = fmt.Sprintf("%s : %s", err.Error(), outputStr)
-	}
-	
-	logHistory("SNAPSHOT", "📸", visualPath, status, details)
-
-	if status == "Success" {
-		enforceRetention(dest)
-	}
-}
-
-func enforceRetention(destPath string) {
-	state.mu.Lock()
-	cfg := state.Config.Retention
-	state.mu.Unlock()
-
-	if !cfg.Enabled { return }
-
-	entries, err := os.ReadDir(destPath)
-	if err != nil { return }
-
-	type SnapInfo struct {
-		Name string
-		Time time.Time
-	}
-	var snaps []SnapInfo
-
-	for _, e := range entries {
-		if !e.IsDir() { continue }
-		t, err := time.Parse(timeLayout, e.Name())
-		if err == nil {
-			snaps = append(snaps, SnapInfo{Name: e.Name(), Time: t})
-		}
-	}
-
-	sort.Slice(snaps, func(i, j int) bool {
-		return snaps[i].Time.After(snaps[j].Time)
-	})
-
-	var toDelete []string
-
-	if cfg.Mode == "count" {
-		if len(snaps) > cfg.Value {
-			for _, s := range snaps[cfg.Value:] {
-				toDelete = append(toDelete, s.Name)
-			}
-		}
-	} else if cfg.Mode == "time" {
-		var cutoff time.Time
-		now := time.Now()
-		switch cfg.Unit {
-		case "days": cutoff = now.AddDate(0, 0, -cfg.Value)
-		case "weeks": cutoff = now.AddDate(0, 0, -cfg.Value*7)
-		case "months": cutoff = now.AddDate(0, -cfg.Value, 0)
-		case "years": cutoff = now.AddDate(-cfg.Value, 0, 0)
-		default: cutoff = now.AddDate(0, 0, -cfg.Value)
-		}
-
-		for _, s := range snaps {
-			if s.Time.Before(cutoff) {
-				toDelete = append(toDelete, s.Name)
-			}
-		}
-	}
-
-	if len(toDelete) > 0 {
-		printDockerLog("RETENTION", "Cleaning up %d old snapshots", len(toDelete))
-		count := 0
-		for _, name := range toDelete {
-			p := fmt.Sprintf("%s/%s", destPath, name)
-			if err := exec.Command("btrfs", "subvolume", "delete", p).Run(); err == nil {
-				printDockerLog("RETENTION", "Deleted: %s", name)
-				count++
-			}
-		}
-		logHistory("RETENTION", "🗑️", destPath, "Success", fmt.Sprintf("Cleaned up %d old snapshots", count))
-	}
-}
-
-func logHistory(opType, emoji, path, status, output string) {
-	state.mu.Lock()
-	defer state.mu.Unlock()
-	entry := LogEntry{
-		ID:        time.Now().UnixNano(),
-		Type:      opType,
-		Emoji:     emoji,
-		Path:      path,
-		Timestamp: time.Now().Format("02-01-2006 15:04 MST"),
-		Status:    status,
-		Output:    output,
-		Duration:  "0s",
-	}
-	state.History = append([]LogEntry{entry}, state.History...)
-	if len(state.History) > 100 { state.History = state.History[:100] }
-	saveState()
-}
-
-// --- Scheduler Logic ---
-
-func refreshSchedules() {
-	state.mu.Lock()
-	defer state.mu.Unlock()
-	for _, id := range state.cronIDs { state.cron.Remove(id) }
-	state.cronIDs = make(map[string]cron.EntryID)
-
-	addJob := func(name string, cfg ScheduleConfig, job func()) {
-		if !cfg.Enabled { return }
-		spec := cfg.Value
-		if cfg.Type == "every_x" {
-			unit := "m"
-			// Convert Days to Hours for compatibility
-			if cfg.Unit == "days" {
-				val, _ := strconv.Atoi(cfg.Value)
-				spec = fmt.Sprintf("@every %dh", val * 24)
-			} else {
-				if cfg.Unit == "hours" { unit = "h" }
-				spec = fmt.Sprintf("@every %s%s", cfg.Value, unit)
-			}
-		}
-		id, err := state.cron.AddFunc(spec, job)
-		if err == nil {
-			printDockerLog("SCHEDULER", "Registered %s job: %s", name, spec)
-			state.cronIDs[name] = id
-		} else {
-			printDockerLog("SCHEDULER", "Error registering %s: %v", name, err)
-		}
-	}
-
-	addJob("snapshot", state.Config.SnapshotSched, func() { go performSnapshot() })
-	addJob("scrub", state.Config.ScrubSched, func() {
-		p := state.Config.TargetDrive
-		if p != "" { runCommandAsync("AUTO SCRUB", "🧹", p, "btrfs", "scrub", "start", "-B", p) }
-	})
-	addJob("balance", state.Config.BalanceSched, func() {
-		p := state.Config.TargetDrive
-		if p != "" { runCommandAsync("AUTO BALANCE", "⚖️", p, "btrfs", "balance", "start", "--full-balance", p) }
-	})
-}
-
-// --- HTTP Boilerplate ---
 
 func handleIndex(w http.ResponseWriter, r *http.Request) {
 	tmpl, _ := template.ParseFS(content, "static/index.html")
@@ -612,6 +648,14 @@ func handleHistory(w http.ResponseWriter, r *http.Request) {
 	state.mu.Lock()
 	defer state.mu.Unlock()
 	json.NewEncoder(w).Encode(state.History)
+}
+
+func handleClearLogs(w http.ResponseWriter, r *http.Request) {
+	state.mu.Lock()
+	state.History = []LogEntry{}
+	state.mu.Unlock()
+	saveState()
+	json.NewEncoder(w).Encode(map[string]interface{}{"status": "cleared"})
 }
 
 func saveState() {

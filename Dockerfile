@@ -9,9 +9,8 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o btrfs-manager .
 # Run Stage
 FROM alpine:latest
 
-# Install BTRFS tools, Compsize, and Timezone data
-# compsize is usually in the community repo
-RUN apk add --no-cache btrfs-progs btrfs-compsize tzdata ca-certificates
+# Install BTRFS tools, Compsize, Smartmontools, and Timezone data
+RUN apk add --no-cache btrfs-progs btrfs-compsize smartmontools tzdata ca-certificates
 
 WORKDIR /root/
 COPY --from=builder /app/btrfs-manager .
