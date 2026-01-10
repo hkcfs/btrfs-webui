@@ -18,15 +18,11 @@
             --log-bg: #020617;
         }
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 0; font-size: 14px; }
-        
-        /* Ultra Wide Container */
         .container { max-width: 100%; width: 98%; margin: 0 auto; padding: 15px; box-sizing: border-box; }
         
-        /* Header */
         header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid var(--border); }
         h1 { margin: 0; font-size: 1.25rem; font-weight: 700; display: flex; align-items: center; gap: 10px; }
         
-        /* Compact Tabs */
         .tab-nav { display: flex; gap: 5px; margin-bottom: 15px; }
         .tab-btn { padding: 8px 16px; background: var(--card); border: 1px solid var(--border); color: var(--text); font-weight: 600; cursor: pointer; border-radius: 6px; font-size: 0.9rem; transition: 0.2s; }
         .tab-btn:hover { background: var(--border); }
@@ -34,75 +30,46 @@
         .tab-content { display: none; }
         .tab-content.active { display: block; }
 
-        /* Dashboard Grid Layout */
-        .dashboard-grid { 
-            display: grid; 
-            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); 
-            gap: 15px; 
-            margin-bottom: 20px; 
-        }
-        
-        /* Spanning utility classes for larger screens */
-        @media (min-width: 1400px) {
-            .span-2 { grid-column: span 2; }
-            .span-3 { grid-column: span 3; }
-        }
+        .dashboard-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 15px; margin-bottom: 20px; }
+        @media (min-width: 1400px) { .span-2 { grid-column: span 2; } }
 
         .card { background: var(--card); border-radius: 8px; padding: 15px; border: 1px solid var(--border); box-shadow: 0 1px 2px rgba(0,0,0,0.05); display: flex; flex-direction: column; }
         h2 { margin: 0 0 12px 0; font-size: 1rem; font-weight: 600; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border); padding-bottom: 8px; }
 
-        /* Compact Controls */
         input, select { padding: 6px 10px; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 4px; width: 100%; box-sizing: border-box; font-size: 0.9rem; }
         .form-group { margin-bottom: 10px; }
         label { display: block; margin-bottom: 4px; font-weight: 500; font-size: 0.85rem; opacity: 0.85; }
 
-        /* Compact Buttons */
         .btn { padding: 6px 12px; border-radius: 4px; border: none; font-weight: 500; cursor: pointer; transition: 0.2s; font-size: 0.85rem; display: inline-flex; align-items: center; justify-content: center; gap: 5px; }
         .btn-primary { background: var(--accent); color: white; }
-        .btn-primary:hover { background: var(--accent-hover); }
         .btn-sec { background: var(--border); color: var(--text); }
-        .btn-sec:hover { filter: brightness(0.95); }
         .btn-danger { background: var(--danger); color: white; }
         .btn-danger-outline { background: transparent; border: 1px solid var(--danger); color: var(--danger); }
-        .btn-danger-outline:hover { background: var(--danger-bg); }
         .btn-group { display: flex; gap: 5px; flex-wrap: wrap; }
         .btn-group .btn { flex: 1; }
 
-        /* Storage Bar - Compact */
         .storage-bar-container { height: 16px; background: var(--border); border-radius: 4px; overflow: hidden; display: flex; margin: 10px 0; }
         .storage-seg { height: 100%; transition: width 0.5s; }
-        .seg-used { background: var(--accent); }
-        .seg-free { background: #10b981; }
-        .seg-meta { background: #f59e0b; }
+        .seg-used { background: var(--accent); } .seg-free { background: #10b981; } .seg-meta { background: #f59e0b; }
         .legend { display: flex; gap: 15px; font-size: 0.8rem; margin-top: 5px; }
         .dot { width: 8px; height: 8px; display: inline-block; border-radius: 50%; margin-right: 4px; }
 
-        /* Logs - Grid Style */
         .log-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px; }
         .log-entry { background: var(--card); border: 1px solid var(--border); padding: 10px; border-radius: 6px; cursor: pointer; font-size: 0.85rem; transition: transform 0.1s; }
-        .log-entry:hover { border-color: var(--accent); }
         .log-header { display: flex; justify-content: space-between; margin-bottom: 5px; }
         .log-meta { font-size: 0.75rem; opacity: 0.6; display: flex; justify-content: space-between; }
         .log-output { display: none; background: var(--log-bg); color: #10b981; padding: 10px; margin-top: 8px; border-radius: 4px; font-family: monospace; font-size: 0.8rem; overflow-x: auto; white-space: pre-wrap; }
         .log-entry.open .log-output { display: block; }
-        .st-Success { color: #10b981; font-weight: bold; } 
-        .st-Failed { color: #ef4444; font-weight: bold; } 
-        .st-Running { color: #3b82f6; font-weight: bold; }
-        .st-Warning { color: #f59e0b; font-weight: bold; }
+        .st-Success { color: #10b981; } .st-Failed { color: #ef4444; } .st-Running { color: #3b82f6; } .st-Warning { color: #f59e0b; }
 
-        /* Modals */
         .modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: var(--modal-overlay); display: none; align-items: center; justify-content: center; z-index: 2000; backdrop-filter: blur(2px); }
         .modal.active { display: flex; }
         .modal-box { background: var(--card); width: 600px; max-width: 95%; max-height: 90vh; border-radius: 8px; padding: 20px; display: flex; flex-direction: column; box-shadow: 0 10px 25px rgba(0,0,0,0.3); border: 1px solid var(--border); }
         .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid var(--border); }
-        .modal-header h2 { margin: 0; border: none; padding: 0; }
         .modal-body { overflow-y: auto; flex: 1; }
         .file-list-item { display: flex; align-items: center; padding: 6px 10px; border-bottom: 1px solid var(--border); cursor: pointer; font-size: 0.9rem; }
         .file-list-item:hover { background: var(--bg); }
-
-        /* Specific Status Items */
         .stat-row { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid var(--bg); }
-        .stat-row:last-child { border-bottom: none; }
     </style>
 </head>
 <body>
@@ -121,11 +88,8 @@
             <button class="tab-btn" onclick="switchTab('settings')">⚙ Settings</button>
         </div>
 
-        <!-- DASHBOARD TAB -->
         <div id="dashboard" class="tab-content active">
-            
             <div class="dashboard-grid">
-                <!-- Storage Card (Spans 2 columns on wide screens) -->
                 <div class="card span-2">
                     <h2>💾 Storage Usage <button class="btn btn-sec btn-sm" onclick="loadStorage()">↻</button></h2>
                     <div id="storageLoading">Loading...</div>
@@ -140,29 +104,21 @@
                             <span><span class="dot seg-meta"></span>Allocated: <b id="valAlloc"></b></span>
                             <span><span class="dot seg-free"></span>Total: <b id="valTotal"></b></span>
                         </div>
-                        <div style="margin-top:10px; padding: 8px; background: var(--bg); border-radius: 4px; text-align: center;">
-                            Unallocated Space: <b id="valUnalloc" style="color:var(--accent)"></b>
-                        </div>
+                        <div style="margin-top:10px; padding: 8px; background: var(--bg); border-radius: 4px; text-align: center;">Unallocated Space: <b id="valUnalloc" style="color:var(--accent)"></b></div>
                     </div>
                 </div>
-
-                <!-- Health Card -->
                 <div class="card">
                     <h2>🩺 Drive Health (SMART)</h2>
                     <div id="smartData" style="flex:1">Loading...</div>
                     <div class="btn-group" style="margin-top:10px">
-                        <button class="btn btn-sec" onclick="runSmartTest('short')">Short Test</button>
-                        <button class="btn btn-sec" onclick="runSmartTest('long')">Long Test</button>
+                        <button class="btn btn-sec" onclick="runSmartTest('short')">Short</button>
+                        <button class="btn btn-sec" onclick="runSmartTest('long')">Long</button>
                     </div>
                 </div>
-
-                <!-- BTRFS Stats Card -->
                 <div class="card">
                     <h2>⚠️ Device Errors <button class="btn btn-sec btn-sm" onclick="loadBtrfsStats()">↻</button></h2>
                     <div id="btrfsErrors" style="font-family:monospace; font-size:0.85rem; overflow-y:auto; max-height:150px;">Loading...</div>
                 </div>
-
-                <!-- Maintenance Card -->
                 <div class="card">
                     <h2>🛠 Maintenance Actions</h2>
                     <div style="display:flex; flex-direction:column; gap:8px;">
@@ -185,27 +141,24 @@
                     </div>
                 </div>
             </div>
-            
             <h3 style="margin: 20px 0 10px 0; border-bottom: 1px solid var(--border); padding-bottom:5px; font-size:1rem;">Activity Log</h3>
             <div id="logListDashboard" class="log-grid"></div>
         </div>
 
-        <!-- SNAPSHOTS TAB -->
         <div id="snapshots" class="tab-content">
             <div class="dashboard-grid">
                 <div class="card">
                     <h2>📸 Controls</h2>
                     <div style="display:flex; flex-direction:column; gap:10px; height:100%; justify-content:center;">
                         <button class="btn btn-primary" style="padding:15px; font-size:1rem;" onclick="doAction('snapshot')">📸 Take Snapshot Now</button>
-                        <button class="btn btn-sec" style="padding:15px; font-size:1rem;" onclick="viewSnapshots()">📂 View & Browse Existing Snapshots</button>
+                        <button class="btn btn-sec" style="padding:15px; font-size:1rem;" onclick="viewSnapshots()">📂 View & Browse</button>
                     </div>
                 </div>
                 <div class="card span-2">
                     <h2>Danger Zone</h2>
-                    <p style="font-size:0.9rem; opacity:0.8; margin-bottom:15px;">Irreversible actions for system maintenance.</p>
                     <div class="btn-group">
                         <button class="btn btn-sec" onclick="clearLogs()">Clear History Logs</button>
-                        <button class="btn btn-danger-outline" onclick="purgeAll()">🔥 Delete ALL Snapshots in Dest</button>
+                        <button class="btn btn-danger-outline" onclick="purgeAll()">🔥 Delete ALL Snapshots</button>
                     </div>
                 </div>
             </div>
@@ -213,52 +166,39 @@
             <div id="logListFull" class="log-grid"></div>
         </div>
 
-        <!-- SETTINGS TAB -->
         <div id="settings" class="tab-content">
             <div class="dashboard-grid">
+                <!-- Profiles Card -->
+                <div class="card">
+                    <h2>📑 Profiles (Switch Config)</h2>
+                    <div style="display:flex; gap:5px; margin-bottom:10px;">
+                        <input type="text" id="profileName" placeholder="Profile Name">
+                        <button class="btn btn-primary" onclick="saveProfile()">Save Current</button>
+                    </div>
+                    <div id="profileList" style="max-height:200px; overflow-y:auto; border:1px solid var(--border); border-radius:4px;"></div>
+                </div>
+
                 <div class="card span-2">
-                    <h2>⚙ Configuration</h2>
+                    <h2>⚙ Active Configuration</h2>
                     <form id="configForm">
-                        <div class="form-group">
-                            <label>Target Drive (For Scrub/Balance/Health)</label>
-                            <input type="text" id="target_drive" placeholder="/host/mnt/data">
-                        </div>
-                        
+                        <div class="form-group"><label>Target Drive</label><input type="text" id="target_drive" placeholder="/host/mnt/data"></div>
                         <div style="display:grid; grid-template-columns: 1fr 1fr; gap:15px;">
-                            <div class="form-group">
-                                <label>Snapshot Source Path</label>
-                                <input type="text" id="snapshot_source" placeholder="/host/source">
-                            </div>
-                            <div class="form-group">
-                                <label>Snapshot Destination Path</label>
-                                <input type="text" id="snapshot_dest" placeholder="/host/dest">
-                            </div>
+                            <div class="form-group"><label>Snapshot Source</label><input type="text" id="snapshot_source" placeholder="/host/source"></div>
+                            <div class="form-group"><label>Snapshot Dest</label><input type="text" id="snapshot_dest" placeholder="/host/dest"></div>
                         </div>
-                        
                         <div style="background:var(--bg); padding:15px; border-radius:6px; margin: 15px 0;">
                             <div id="schedulers_container"></div>
                         </div>
-                        
                         <div class="form-group" style="border:1px solid var(--border); padding:10px; border-radius:6px;">
                             <label style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-                                <span>🗑 Retention Policy (Auto-Delete)</span>
-                                <input type="checkbox" id="retention_enabled" style="width:auto">
+                                <span>🗑 Retention</span><input type="checkbox" id="retention_enabled" style="width:auto">
                             </label>
                             <div class="btn-group">
-                                <select id="retention_mode" onchange="toggleRetentionUI()">
-                                    <option value="count">Keep Count (Last N)</option>
-                                    <option value="time">Keep Time (Older than)</option>
-                                </select>
+                                <select id="retention_mode" onchange="toggleRetentionUI()"><option value="count">Count</option><option value="time">Time</option></select>
                                 <input type="number" id="retention_value" placeholder="10" style="width:80px">
-                                <select id="retention_unit" style="width:100px">
-                                    <option value="days">Days</option>
-                                    <option value="weeks">Weeks</option>
-                                    <option value="months">Months</option>
-                                    <option value="years">Years</option>
-                                </select>
+                                <select id="retention_unit" style="width:100px"><option value="days">Days</option><option value="weeks">Weeks</option><option value="months">Months</option></select>
                             </div>
                         </div>
-
                         <button type="submit" class="btn btn-primary" style="width:100%; margin-top:10px; padding:10px;">💾 Save Configuration</button>
                     </form>
                 </div>
@@ -267,51 +207,29 @@
     </div>
 
     <!-- Modals -->
-    <div id="snapListModal" class="modal">
-        <div class="modal-box">
-            <div class="modal-header">
-                <h2>Existing Snapshots</h2>
-                <button class="btn btn-sec btn-sm" onclick="closeModal('snapListModal')">×</button>
-            </div>
-            <div id="snapListBody" class="modal-body"></div>
-        </div>
-    </div>
-    
-    <div id="browserModal" class="modal">
-        <div class="modal-box" style="height:80vh">
-            <div class="modal-header">
-                <h2>Browse</h2>
-                <button class="btn btn-sec btn-sm" onclick="closeModal('browserModal')">×</button>
-            </div>
-            <div style="display:flex; gap:10px; margin-bottom:10px; align-items:center; background:var(--bg); padding:5px; border-radius:4px;">
-                <button class="btn btn-sec btn-sm" onclick="browseUp()">⬆</button>
-                <span id="currentPath" style="font-family:monospace; font-size:0.8rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"></span>
-            </div>
-            <div id="fileList" class="modal-body" style="border:1px solid var(--border); border-radius:4px;"></div>
-        </div>
-    </div>
-
-    <div id="outModal" class="modal">
-        <div class="modal-box" style="height:auto; max-width:800px;">
-            <div class="modal-header">
-                <h2>Command Output</h2>
-                <button class="btn btn-sec btn-sm" onclick="closeModal('outModal')">×</button>
-            </div>
-            <div id="outContent" style="background:var(--log-bg); color:#10b981; padding:15px; border-radius:6px; max-height:400px; overflow:auto; white-space:pre-wrap; font-family:monospace; font-size:0.85rem"></div>
-        </div>
-    </div>
+    <div id="snapListModal" class="modal"><div class="modal-box"><div class="modal-header"><h2>Snapshots</h2><button class="btn btn-sec btn-sm" onclick="closeModal('snapListModal')">×</button></div><div id="snapListBody" class="modal-body"></div></div></div>
+    <div id="browserModal" class="modal"><div class="modal-box" style="height:80vh"><div class="modal-header"><h2>Browse</h2><button class="btn btn-sec btn-sm" onclick="closeModal('browserModal')">×</button></div><div style="display:flex; gap:10px; margin-bottom:10px; align-items:center; background:var(--bg); padding:5px; border-radius:4px;"><button class="btn btn-sec btn-sm" onclick="browseUp()">⬆</button><span id="currentPath" style="font-family:monospace; font-size:0.8rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"></span></div><div id="fileList" class="modal-body" style="border:1px solid var(--border); border-radius:4px;"></div></div></div>
+    <div id="outModal" class="modal"><div class="modal-box" style="height:auto; max-width:800px;"><div class="modal-header"><h2>Output</h2><button class="btn btn-sec btn-sm" onclick="closeModal('outModal')">×</button></div><div id="outContent" style="background:var(--log-bg); color:#10b981; padding:15px; border-radius:6px; max-height:400px; overflow:auto; white-space:pre-wrap; font-family:monospace; font-size:0.85rem"></div></div></div>
 
     <script>
         const API = '/api';
         let currentPath = "";
 
-        // --- Config & Init ---
+        // --- Core ---
+        function switchTab(id) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+            document.getElementById(id).classList.add('active');
+            event.target.classList.add('active');
+            if(id === 'dashboard') loadDashboard();
+            if(id === 'settings') loadProfiles();
+        }
+
         async function loadConfig() {
             const res = await fetch(`${API}/config`);
             const data = await res.json();
             
             ['target_drive', 'snapshot_source', 'snapshot_dest'].forEach(k => document.getElementById(k).value = data[k] || '');
-
             if(data.retention) {
                 document.getElementById('retention_enabled').checked = data.retention.enabled;
                 document.getElementById('retention_mode').value = data.retention.mode;
@@ -319,7 +237,6 @@
                 document.getElementById('retention_unit').value = data.retention.unit;
                 toggleRetentionUI();
             }
-
             ['snapshot_sched', 'scrub_sched', 'balance_sched'].forEach(key => {
                 const cfg = data[key];
                 if(cfg) {
@@ -357,9 +274,37 @@
             alert("Settings Saved");
         };
 
+        // --- Profiles ---
+        async function loadProfiles() {
+            const res = await fetch(`${API}/profiles/list`);
+            const keys = await res.json();
+            document.getElementById('profileList').innerHTML = keys.map(k => `
+                <div style="display:flex; justify-content:space-between; padding:8px; border-bottom:1px solid var(--border)">
+                    <b>${k}</b>
+                    <div class="btn-group">
+                        <button class="btn btn-sec btn-sm" onclick="loadProfile('${k}')">Load</button>
+                        <button class="btn btn-danger-outline btn-sm" onclick="deleteProfile('${k}')">×</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+        async function saveProfile() {
+            const name = document.getElementById('profileName').value;
+            if(!name) return alert("Enter a name");
+            await fetch(`${API}/profiles/save?name=${encodeURIComponent(name)}`, {method:'POST'});
+            loadProfiles();
+        }
+        async function loadProfile(name) {
+            if(!confirm("Load profile? Unsaved changes will be lost.")) return;
+            await fetch(`${API}/profiles/load?name=${encodeURIComponent(name)}`, {method:'POST'});
+            loadConfig();
+        }
+        async function deleteProfile(name) {
+            if(confirm("Delete profile?")) { await fetch(`${API}/profiles/delete?name=${encodeURIComponent(name)}`, {method:'POST'}); loadProfiles(); }
+        }
+
         // --- Dashboard Data ---
         async function loadDashboard() {
-            // Storage
             fetch(`${API}/storage/usage`).then(r=>r.json()).then(data => {
                 document.getElementById('storageLoading').style.display='none';
                 document.getElementById('storageDisplay').style.display='flex';
@@ -368,40 +313,26 @@
                 document.getElementById('valTotal').innerText = toGB(data.device_size);
                 document.getElementById('valAlloc').innerText = toGB(data.device_allocated);
                 document.getElementById('valUnalloc').innerText = toGB(data.device_unallocated);
-                
                 const usedPct = (data.used / data.device_size) * 100;
                 const metaPct = ((data.device_allocated - data.used) / data.device_size) * 100;
-                const freePct = 100 - usedPct - metaPct;
                 document.getElementById('barUsed').style.width = usedPct + "%";
                 document.getElementById('barMeta').style.width = metaPct + "%";
-                document.getElementById('barFree').style.width = freePct + "%";
+                document.getElementById('barFree').style.width = (100 - usedPct - metaPct) + "%";
             }).catch(e => document.getElementById('storageLoading').innerText="N/A");
 
-            // SMART
             fetch(`${API}/health/smart`).then(r=>r.json()).then(data => {
                 let status = data.smart_status?.passed ? 'PASSED' : 'FAILED';
                 let color = data.smart_status?.passed ? '#10b981' : '#ef4444';
                 let temp = data.temperature?.current || '?';
-                let family = data.model_family || data.model_name || 'Unknown Disk';
-                
-                let html = `
-                    <div class="stat-row"><span>Model</span> <b>${family}</b></div>
-                    <div class="stat-row"><span>Status</span> <b style="color:${color}">${status}</b></div>
-                    <div class="stat-row"><span>Temp</span> <b>${temp}°C</b></div>
-                    <div class="stat-row"><span>Power Cycle</span> <b>${data.power_cycle_count || '?'}</b></div>
-                `;
-                document.getElementById('smartData').innerHTML = html;
+                let family = data.model_family || data.model_name || 'Unknown';
+                document.getElementById('smartData').innerHTML = `<div class="stat-row"><span>Model</span><b>${family}</b></div><div class="stat-row"><span>Status</span><b style="color:${color}">${status}</b></div><div class="stat-row"><span>Temp</span><b>${temp}°C</b></div>`;
             });
 
-            // BTRFS
             fetch(`${API}/health/btrfs`).then(r=>r.json()).then(data => {
                 let txt = "";
-                let hasAnyErr = false;
                 for(const [dev, stats] of Object.entries(data)) {
                     let hasErr = false;
-                    for(const [k,v] of Object.entries(stats)) {
-                        if(v > 0) { txt += `<div style="color:var(--danger)">${dev} ${k}: ${v} ⚠</div>`; hasErr = true; hasAnyErr=true; }
-                    }
+                    for(const [k,v] of Object.entries(stats)) { if(v > 0) { txt += `<div style="color:var(--danger)">${dev} ${k}: ${v} ⚠</div>`; hasErr = true; } }
                     if(!hasErr) txt += `<div style="color:var(--text); opacity:0.6">${dev}: OK</div>`;
                 }
                 document.getElementById('btrfsErrors').innerHTML = txt || "No stats";
@@ -413,42 +344,23 @@
             if(!confirm("Are you sure?")) return;
             const res = await fetch(`${API}/action/${type}?action=${action}`);
             const data = await res.json();
-            if(showOutput) pollLog(data.id);
-            else setTimeout(loadHistory, 1000);
+            if(showOutput) pollLog(data.id); else setTimeout(loadHistory, 1000);
         }
-
         async function loadHistory() {
             const res = await fetch(`${API}/history`);
             const data = await res.json();
-            const render = (logs) => logs.map(l => `
-                <div class="log-entry" onclick="this.classList.toggle('open')">
-                    <div class="log-header">
-                        <b>${l.emoji} ${l.type}</b>
-                        <b class="st-${l.status.split(' ')[0]}">${l.status}</b>
-                    </div>
-                    <div class="log-meta"><span>${l.timestamp}</span><span>${l.duration}</span></div>
-                    <div class="log-output">${l.output}</div>
-                </div>
-            `).join('');
-            
-            document.getElementById('logListDashboard').innerHTML = render(data.slice(0, 8)); // Show 8 on dash
+            const render = (logs) => logs.map(l => `<div class="log-entry" onclick="this.classList.toggle('open')"><div class="log-header"><b>${l.emoji} ${l.type}</b><b class="st-${l.status.split(' ')[0]}">${l.status}</b></div><div class="log-meta"><span>${l.timestamp}</span><span>${l.duration}</span></div><div class="log-output">${l.output}</div></div>`).join('');
+            document.getElementById('logListDashboard').innerHTML = render(data.slice(0, 8));
             document.getElementById('logListFull').innerHTML = render(data);
         }
-
-        async function runSmartTest(type) {
-            fetch(`${API}/health/test?type=${type}`).then(r=>r.json()).then(d=>pollLog(d.id));
-        }
-
+        async function runSmartTest(type) { fetch(`${API}/health/test?type=${type}`).then(r=>r.json()).then(d=>pollLog(d.id)); }
         function pollLog(id) {
             document.getElementById('outModal').classList.add('active');
             const interval = setInterval(async () => {
                 const res = await fetch(`${API}/history`);
                 const hist = await res.json();
                 const log = hist.find(l => l.id === id);
-                if(log) {
-                    document.getElementById('outContent').innerText = log.output || "Running...";
-                    if(log.status !== "Running...") clearInterval(interval);
-                }
+                if(log) { document.getElementById('outContent').innerText = log.output || "Running..."; if(log.status !== "Running...") clearInterval(interval); }
             }, 1000);
         }
 
@@ -457,77 +369,29 @@
             document.getElementById('snapListModal').classList.add('active');
             const res = await fetch(`${API}/snapshots/list`);
             const list = await res.json();
-            document.getElementById('snapListBody').innerHTML = list.length ? list.map(s => `
-                <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid var(--border)">
-                    <div style="overflow:hidden">
-                        <div style="font-weight:600; font-family:monospace">${s.name}</div>
-                        <div style="font-size:0.8rem; opacity:0.6">${s.date}</div>
-                    </div>
-                    <div style="display:flex; gap:5px;">
-                        <button class="btn btn-sec btn-sm" onclick="exploreSnapshot('${s.path}')">📂 Browse</button>
-                        <button class="btn btn-danger-outline btn-sm" onclick="deleteSnapshot('${s.path}')">🗑</button>
-                    </div>
-                </div>
-            `).join('') : "No snapshots found in destination.";
+            document.getElementById('snapListBody').innerHTML = list.length ? list.map(s => `<div style="display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid var(--border)"><div style="overflow:hidden"><div style="font-weight:600; font-family:monospace">${s.name}</div><div style="font-size:0.8rem; opacity:0.6">${s.date}</div></div><div style="display:flex; gap:5px;"><button class="btn btn-sec btn-sm" onclick="exploreSnapshot('${s.path}')">📂</button><button class="btn btn-danger-outline btn-sm" onclick="deleteSnapshot('${s.path}')">🗑</button></div></div>`).join('') : "No snapshots.";
         }
-
-        async function exploreSnapshot(path) {
-            currentPath = path;
-            document.getElementById('browserModal').classList.add('active');
-            await loadBrowserPath(path);
-        }
-
+        async function exploreSnapshot(path) { currentPath = path; document.getElementById('browserModal').classList.add('active'); await loadBrowserPath(path); }
         async function loadBrowserPath(path) {
             document.getElementById('currentPath').innerText = path;
             const res = await fetch(`${API}/browser/list?path=${encodeURIComponent(path)}`);
             if(!res.ok) { alert("Access Denied"); return; }
             const files = await res.json();
-            document.getElementById('fileList').innerHTML = files.map(f => `
-                <div class="file-list-item" onclick="${f.is_dir ? `loadBrowserPath('${f.path.replace(/\\/g, "\\\\")}')` : `downloadFile('${f.path.replace(/\\/g, "\\\\")}')`}">
-                    <span style="margin-right:10px">${f.is_dir ? '📁' : '📄'}</span>
-                    <span style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap">${f.name}</span>
-                    <span style="font-size:0.8rem; opacity:0.6">${(f.size/1024).toFixed(1)} KB</span>
-                </div>
-            `).join('');
+            document.getElementById('fileList').innerHTML = files.map(f => `<div class="file-list-item" onclick="${f.is_dir ? `loadBrowserPath('${f.path.replace(/\\/g, "\\\\")}')` : `downloadFile('${f.path.replace(/\\/g, "\\\\")}')`}"><span style="margin-right:10px">${f.is_dir ? '📁' : '📄'}</span><span style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap">${f.name}</span><span style="font-size:0.8rem; opacity:0.6">${(f.size/1024).toFixed(1)} KB</span></div>`).join('');
         }
-
-        function browseUp() {
-            const parts = currentPath.split('/'); parts.pop();
-            loadBrowserPath(parts.join('/'));
-        }
+        function browseUp() { const parts = currentPath.split('/'); parts.pop(); loadBrowserPath(parts.join('/')); }
         function downloadFile(path) { window.location.href = `${API}/browser/download?path=${encodeURIComponent(path)}`; }
-        async function deleteSnapshot(path) {
-            if(confirm("Delete this snapshot permanently?")) { await fetch(`${API}/snapshots/delete?path=${encodeURIComponent(path)}`); viewSnapshots(); }
-        }
+        async function deleteSnapshot(path) { if(confirm("Delete?")) { await fetch(`${API}/snapshots/delete?path=${encodeURIComponent(path)}`); viewSnapshots(); } }
         async function clearLogs() { if(confirm("Clear logs?")) { await fetch(`${API}/logs/clear`); loadHistory(); } }
-        async function purgeAll() { if(prompt("Type DELETE to confirm")==="DELETE") { await fetch(`${API}/action/purge_all`); loadHistory(); } }
+        async function purgeAll() { if(prompt("Type DELETE")==="DELETE") { await fetch(`${API}/action/purge_all`); loadHistory(); } }
         
-        // --- UI Helpers ---
-        function switchTab(id) {
-            document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
-            document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
-            document.getElementById(id).classList.add('active');
-            event.target.classList.add('active');
-            if(id === 'dashboard') loadDashboard();
-        }
         function closeModal(id) { document.getElementById(id).classList.remove('active'); }
-        function toggleTheme() {
-            const t = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
-            document.documentElement.setAttribute('data-theme', t); localStorage.setItem('theme', t);
-        }
+        function toggleTheme() { const t = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark'; document.documentElement.setAttribute('data-theme', t); localStorage.setItem('theme', t); }
         if(localStorage.getItem('theme') === 'dark') toggleTheme();
         setInterval(() => { document.getElementById('clock').innerText = new Date().toLocaleTimeString(); }, 1000);
 
         function renderSchedInput(key, title) {
-            return `
-                <div style="margin-bottom:10px; padding-left:5px;">
-                    <label style="display:flex; justify-content:space-between; align-items:center">${title} <input type="checkbox" id="${key}_enabled" style="width:auto;"></label>
-                    <div class="btn-group" style="margin-top:5px">
-                        <select id="${key}_type" onchange="toggleSched('${key}')"><option value="every_x">Every X</option><option value="cron">Cron</option></select>
-                        <input type="text" id="${key}_value" placeholder="15" style="flex:1">
-                        <select id="${key}_unit" style="width:90px"><option value="minutes">Mins</option><option value="hours">Hrs</option><option value="days">Days</option></select>
-                    </div>
-                </div>`;
+            return `<div style="margin-bottom:10px; padding-left:5px;"><label style="display:flex; justify-content:space-between; align-items:center">${title} <input type="checkbox" id="${key}_enabled" style="width:auto;"></label><div class="btn-group" style="margin-top:5px"><select id="${key}_type" onchange="toggleSched('${key}')"><option value="every_x">Every X</option><option value="cron">Cron</option></select><input type="text" id="${key}_value" placeholder="15" style="flex:1"><select id="${key}_unit" style="width:90px"><option value="minutes">Mins</option><option value="hours">Hrs</option><option value="days">Days</option></select></div></div>`;
         }
         document.getElementById('schedulers_container').innerHTML = renderSchedInput('snapshot_sched', '📸 Snapshot Schedule') + renderSchedInput('scrub_sched', '🧹 Scrub Schedule') + renderSchedInput('balance_sched', '⚖ Balance Schedule');
         function toggleSched(key) { document.getElementById(`${key}_unit`).style.display = document.getElementById(`${key}_type`).value === 'cron' ? 'none' : 'block'; }
