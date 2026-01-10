@@ -187,8 +187,9 @@ func runCommandAsync(opType, emoji, path, cmdName string, args ...string) int64 
 // --- Snapshot List & Delete Handlers ---
 
 type SnapshotItem struct {
-	Name string `json:"name"`
-	Date string `json:"date"`
+	Name    string    `json:"name"`
+	Date    string    `json:"date"`
+	SortKey time.Time `json:"-"` // Hidden field used only for sorting
 }
 
 func handleListSnapshots(w http.ResponseWriter, r *http.Request) {
@@ -211,23 +212,29 @@ func handleListSnapshots(w http.ResponseWriter, r *http.Request) {
 	for _, e := range entries {
 		if e.IsDir() {
 			displayDate := "Unknown"
+			
+			// Parse the timestamp from the folder name
 			t, err := time.Parse(timeLayout, e.Name())
-			if err == nil {
-				displayDate = t.Format("Jan 02, 2006 15:04 MST")
-			} else {
+			
+			// Fallback if parsing fails (e.g., manual folders)
+			if err != nil {
 				info, _ := e.Info()
-				displayDate = info.ModTime().Format("Jan 02, 2006 15:04 MST")
+				t = info.ModTime()
 			}
 
+			displayDate = t.Format("Jan 02, 2006 15:04 MST")
+
 			list = append(list, SnapshotItem{
-				Name: e.Name(),
-				Date: displayDate,
+				Name:    e.Name(),
+				Date:    displayDate,
+				SortKey: t, // Store the actual time object for sorting
 			})
 		}
 	}
 
+	// Sort by Time descending (Newest First)
 	sort.Slice(list, func(i, j int) bool {
-		return list[i].Name > list[j].Name
+		return list[i].SortKey.After(list[j].SortKey)
 	})
 
 	json.NewEncoder(w).Encode(list)
@@ -350,7 +357,6 @@ func handleClearLogs(w http.ResponseWriter, r *http.Request) {
 // --- Logic ---
 
 func checkMissedSnapshots() {
-	// Give the system a moment to settle
 	time.Sleep(2 * time.Second)
 
 	state.mu.Lock()
@@ -358,12 +364,10 @@ func checkMissedSnapshots() {
 	dest := state.Config.SnapshotDest
 	state.mu.Unlock()
 
-	// Only catch up if enabled and using "every_x" (cron is too ambiguous)
 	if !sched.Enabled || dest == "" || sched.Type != "every_x" {
 		return 
 	}
 
-	// Calculate config interval
 	val, err := strconv.Atoi(sched.Value)
 	if err != nil || val == 0 { val = 1 }
 	
@@ -379,7 +383,6 @@ func checkMissedSnapshots() {
 		return
 	}
 
-	// Find last actual snapshot on disk
 	entries, err := os.ReadDir(dest)
 	if err != nil {
 		printDockerLog("CATCHUP", "Cannot read destination to check missed snapshots: %v", err)
@@ -401,7 +404,6 @@ func checkMissedSnapshots() {
 		}
 	}
 
-	// If we found snapshots and the gap is larger than interval
 	if found {
 		gap := time.Since(lastTime)
 		if gap > duration {
@@ -411,8 +413,6 @@ func checkMissedSnapshots() {
 			printDockerLog("CATCHUP", "No missed snapshots. Last was %s ago.", gap)
 		}
 	} else {
-		// Optional: If no snapshots exist at all, do we start now?
-		// Usually yes for "Every X" schedules.
 		printDockerLog("CATCHUP", "No existing snapshots found. Triggering initial snapshot.")
 		performSnapshot()
 	}
@@ -561,8 +561,6 @@ func refreshSchedules() {
 			// Convert Days to Hours for compatibility
 			if cfg.Unit == "days" {
 				val, _ := strconv.Atoi(cfg.Value)
-				// Overwrite spec value logic just for the cron registration
-				// We don't change cfg.Value permanently to keep UI consistent
 				spec = fmt.Sprintf("@every %dh", val * 24)
 			} else {
 				if cfg.Unit == "hours" { unit = "h" }
