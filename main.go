@@ -39,7 +39,6 @@ type RetentionConfig struct {
 	Unit    string `json:"unit"`
 }
 
-// RESTORED: Single Configuration Structure
 type Config struct {
 	TargetDrive    string          `json:"target_drive"`
 	SnapshotSource string          `json:"snapshot_source"`
@@ -62,16 +61,18 @@ type LogEntry struct {
 }
 
 type AppState struct {
-	Config  Config     `json:"config"`
-	History []LogEntry `json:"history"`
-	mu      sync.Mutex
-	cron    *cron.Cron
-	cronIDs map[string]cron.EntryID
+	Config   Config            `json:"config"`
+	Profiles map[string]Config `json:"profiles"` // NEW: Store saved configs
+	History  []LogEntry        `json:"history"`
+	mu       sync.Mutex
+	cron     *cron.Cron
+	cronIDs  map[string]cron.EntryID
 }
 
 var state = AppState{
-	cron:    cron.New(),
-	cronIDs: make(map[string]cron.EntryID),
+	cron:     cron.New(),
+	cronIDs:  make(map[string]cron.EntryID),
+	Profiles: make(map[string]Config),
 	Config: Config{
 		SnapshotSched: ScheduleConfig{Unit: "minutes"},
 		ScrubSched:    ScheduleConfig{Unit: "days"},
@@ -87,7 +88,6 @@ func main() {
 	state.cron.Start()
 	refreshSchedules()
 
-	// Check for missed snapshots on startup
 	go checkMissedSnapshots()
 
 	// Handlers
@@ -96,19 +96,23 @@ func main() {
 	http.HandleFunc("/api/history", handleHistory)
 	http.HandleFunc("/api/logs/clear", handleClearLogs)
 
-	// NEW FEATURES (Storage, Health, Browser)
+	// Profile Management (NEW)
+	http.HandleFunc("/api/profiles/list", handleProfileList)
+	http.HandleFunc("/api/profiles/save", handleProfileSave)
+	http.HandleFunc("/api/profiles/load", handleProfileLoad)
+	http.HandleFunc("/api/profiles/delete", handleProfileDelete)
+
+	// Features
 	http.HandleFunc("/api/storage/usage", handleStorageUsage)
 	http.HandleFunc("/api/health/smart", handleSmartData)
 	http.HandleFunc("/api/health/test", handleSmartTest)
 	http.HandleFunc("/api/health/btrfs", handleBtrfsStats)
 	http.HandleFunc("/api/browser/list", handleBrowserList)
 	http.HandleFunc("/api/browser/download", handleBrowserDownload)
-	
-	// Snapshot Management
-	http.HandleFunc("/api/snapshots/list", handleListSnapshots)
-	http.HandleFunc("/api/snapshots/delete", handleDeleteSnapshot)
 
 	// Actions
+	http.HandleFunc("/api/snapshots/list", handleListSnapshots)
+	http.HandleFunc("/api/snapshots/delete", handleDeleteSnapshot)
 	http.HandleFunc("/api/action/snapshot", handleActionSnapshot)
 	http.HandleFunc("/api/action/scrub", handleActionScrub)
 	http.HandleFunc("/api/action/balance", handleActionBalance)
@@ -117,10 +121,62 @@ func main() {
 	http.HandleFunc("/api/action/purge_all", handlePurgeAllSnapshots)
 
 	port := os.Getenv("PORT")
-	if port == "" { port = "8080" }
+	if port == "" {
+		port = "8080"
+	}
 
 	fmt.Printf("🚀 BTRFS Manager started on :%s\n", port)
 	log.Fatal(http.ListenAndServe(":"+port, nil))
+}
+
+// --- NEW PROFILE HANDLERS ---
+
+func handleProfileList(w http.ResponseWriter, r *http.Request) {
+	state.mu.Lock()
+	defer state.mu.Unlock()
+	keys := make([]string, 0, len(state.Profiles))
+	for k := range state.Profiles {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	json.NewEncoder(w).Encode(keys)
+}
+
+func handleProfileSave(w http.ResponseWriter, r *http.Request) {
+	name := r.URL.Query().Get("name")
+	if name == "" {
+		http.Error(w, "Name required", 400)
+		return
+	}
+	state.mu.Lock()
+	state.Profiles[name] = state.Config
+	state.mu.Unlock()
+	saveState()
+	json.NewEncoder(w).Encode(map[string]string{"status": "saved"})
+}
+
+func handleProfileLoad(w http.ResponseWriter, r *http.Request) {
+	name := r.URL.Query().Get("name")
+	state.mu.Lock()
+	if cfg, ok := state.Profiles[name]; ok {
+		state.Config = cfg
+		state.mu.Unlock()
+		saveState()
+		refreshSchedules() // Apply the loaded schedule
+		json.NewEncoder(w).Encode(map[string]string{"status": "loaded"})
+	} else {
+		state.mu.Unlock()
+		http.Error(w, "Profile not found", 404)
+	}
+}
+
+func handleProfileDelete(w http.ResponseWriter, r *http.Request) {
+	name := r.URL.Query().Get("name")
+	state.mu.Lock()
+	delete(state.Profiles, name)
+	state.mu.Unlock()
+	saveState()
+	json.NewEncoder(w).Encode(map[string]string{"status": "deleted"})
 }
 
 // --- Helper: Command Runner & Logger ---
@@ -159,7 +215,7 @@ func runCommandAsync(opType, emoji, path, cmdName string, args ...string) int64 
 		if err != nil {
 			printDockerLog(opType, "ERROR: %v", err)
 		}
-		
+
 		state.mu.Lock()
 		defer state.mu.Unlock()
 		for i, e := range state.History {
@@ -168,7 +224,7 @@ func runCommandAsync(opType, emoji, path, cmdName string, args ...string) int64 
 				state.History[i].Output = outputStr
 				if err != nil {
 					if strings.Contains(outputStr, "Operation in progress") || strings.Contains(outputStr, "inprogress") {
-						state.History[i].Status = "Warning" 
+						state.History[i].Status = "Warning"
 						state.History[i].Output += "\n\n⚠️ NOTE: A background operation is already running."
 					} else {
 						state.History[i].Status = "Failed"
@@ -180,13 +236,14 @@ func runCommandAsync(opType, emoji, path, cmdName string, args ...string) int64 
 				break
 			}
 		}
-		if len(state.History) > 100 { state.History = state.History[:100] }
+		if len(state.History) > 100 {
+			state.History = state.History[:100]
+		}
 		saveState()
 	}()
 	return entryID
 }
 
-// THIS WAS MISSING
 func logHistory(opType, emoji, path, status, output string) {
 	state.mu.Lock()
 	defer state.mu.Unlock()
@@ -198,10 +255,12 @@ func logHistory(opType, emoji, path, status, output string) {
 		Timestamp: time.Now().Format("02-01-2006 15:04 MST"),
 		Status:    status,
 		Output:    output,
-		Duration:  "0s", // Synchronous or already finished tasks
+		Duration:  "0s",
 	}
 	state.History = append([]LogEntry{entry}, state.History...)
-	if len(state.History) > 100 { state.History = state.History[:100] }
+	if len(state.History) > 100 {
+		state.History = state.History[:100]
+	}
 	saveState()
 }
 
@@ -209,10 +268,16 @@ func logHistory(opType, emoji, path, status, output string) {
 
 func handleStorageUsage(w http.ResponseWriter, r *http.Request) {
 	path := state.Config.TargetDrive
-	if path == "" { http.Error(w, "Target drive not set", 400); return }
+	if path == "" {
+		http.Error(w, "Target drive not set", 400)
+		return
+	}
 
 	out, err := exec.Command("btrfs", "filesystem", "usage", "-b", path).Output()
-	if err != nil { http.Error(w, err.Error(), 500); return }
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
 
 	text := string(out)
 	parseBytes := func(key string) int64 {
@@ -231,23 +296,29 @@ func handleStorageUsage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp := map[string]int64{
-		"device_size": parseBytes("Device size:"),
-		"device_allocated": parseBytes("Device allocated:"),
+		"device_size":        parseBytes("Device size:"),
+		"device_allocated":   parseBytes("Device allocated:"),
 		"device_unallocated": parseBytes("Device unallocated:"),
-		"used": parseBytes("Used:"),
-		"free": parseBytes("Free (estimated):"),
+		"used":               parseBytes("Used:"),
+		"free":               parseBytes("Free (estimated):"),
 	}
 	json.NewEncoder(w).Encode(resp)
 }
 
 func handleSmartData(w http.ResponseWriter, r *http.Request) {
 	path := state.Config.TargetDrive
-	if path == "" { http.Error(w, "Target drive not set", 400); return }
-	
+	if path == "" {
+		http.Error(w, "Target drive not set", 400)
+		return
+	}
+
 	dfOut, _ := exec.Command("df", path).Output()
 	lines := strings.Split(strings.TrimSpace(string(dfOut)), "\n")
-	if len(lines) < 2 { http.Error(w, "Could not resolve device", 500); return }
-	
+	if len(lines) < 2 {
+		http.Error(w, "Could not resolve device", 500)
+		return
+	}
+
 	device := strings.Fields(lines[1])[0]
 	baseDevice := strings.TrimRight(device, "0123456789")
 
@@ -260,7 +331,7 @@ func handleSmartData(w http.ResponseWriter, r *http.Request) {
 func handleSmartTest(w http.ResponseWriter, r *http.Request) {
 	testType := r.URL.Query().Get("type")
 	path := state.Config.TargetDrive
-	
+
 	dfOut, _ := exec.Command("df", path).Output()
 	lines := strings.Split(strings.TrimSpace(string(dfOut)), "\n")
 	device := strings.Fields(lines[1])[0]
@@ -272,10 +343,16 @@ func handleSmartTest(w http.ResponseWriter, r *http.Request) {
 
 func handleBtrfsStats(w http.ResponseWriter, r *http.Request) {
 	path := state.Config.TargetDrive
-	if path == "" { http.Error(w, "Target drive not set", 400); return }
+	if path == "" {
+		http.Error(w, "Target drive not set", 400)
+		return
+	}
 	out, err := exec.Command("btrfs", "device", "stats", path).CombinedOutput()
-	if err != nil { http.Error(w, string(out), 500); return }
-	
+	if err != nil {
+		http.Error(w, string(out), 500)
+		return
+	}
+
 	stats := make(map[string]map[string]int)
 	scanner := bufio.NewScanner(strings.NewReader(string(out)))
 	for scanner.Scan() {
@@ -284,7 +361,9 @@ func handleBtrfsStats(w http.ResponseWriter, r *http.Request) {
 			dev := strings.TrimSuffix(strings.TrimPrefix(parts[0], "["), "].")
 			key := parts[0][strings.LastIndex(parts[0], ".")+1:]
 			val, _ := strconv.Atoi(parts[1])
-			if _, ok := stats[dev]; !ok { stats[dev] = make(map[string]int) }
+			if _, ok := stats[dev]; !ok {
+				stats[dev] = make(map[string]int)
+			}
 			stats[dev][key] = val
 		}
 	}
@@ -293,20 +372,25 @@ func handleBtrfsStats(w http.ResponseWriter, r *http.Request) {
 
 func handleBrowserList(w http.ResponseWriter, r *http.Request) {
 	reqPath := r.URL.Query().Get("path")
-	if reqPath == "" { http.Error(w, "Path required", 400); return }
+	if reqPath == "" {
+		http.Error(w, "Path required", 400)
+		return
+	}
 
-	// SECURITY: Ensure browsing inside Destination
 	state.mu.Lock()
 	dest := state.Config.SnapshotDest
 	state.mu.Unlock()
-	
+
 	if dest == "" || !strings.HasPrefix(filepath.Clean(reqPath), filepath.Clean(dest)) {
 		http.Error(w, "Access Denied", 403)
 		return
 	}
 
 	entries, err := os.ReadDir(reqPath)
-	if err != nil { http.Error(w, err.Error(), 500); return }
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
 
 	type FileItem struct {
 		Name  string `json:"name"`
@@ -318,14 +402,16 @@ func handleBrowserList(w http.ResponseWriter, r *http.Request) {
 	for _, e := range entries {
 		info, _ := e.Info()
 		files = append(files, FileItem{
-			Name: e.Name(),
+			Name:  e.Name(),
 			IsDir: e.IsDir(),
-			Size: info.Size(),
-			Path: filepath.Join(reqPath, e.Name()),
+			Size:  info.Size(),
+			Path:  filepath.Join(reqPath, e.Name()),
 		})
 	}
 	sort.Slice(files, func(i, j int) bool {
-		if files[i].IsDir != files[j].IsDir { return files[i].IsDir }
+		if files[i].IsDir != files[j].IsDir {
+			return files[i].IsDir
+		}
 		return files[i].Name < files[j].Name
 	})
 	json.NewEncoder(w).Encode(files)
@@ -336,7 +422,7 @@ func handleBrowserDownload(w http.ResponseWriter, r *http.Request) {
 	state.mu.Lock()
 	dest := state.Config.SnapshotDest
 	state.mu.Unlock()
-	
+
 	if dest == "" || !strings.HasPrefix(filepath.Clean(reqPath), filepath.Clean(dest)) {
 		http.Error(w, "Access Denied", 403)
 		return
@@ -344,7 +430,7 @@ func handleBrowserDownload(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, reqPath)
 }
 
-// --- Original Snapshot Logic (Restored) ---
+// --- Original Snapshot Logic ---
 
 type SnapshotItem struct {
 	Name    string    `json:"name"`
@@ -358,17 +444,23 @@ func handleListSnapshots(w http.ResponseWriter, r *http.Request) {
 	dest := state.Config.SnapshotDest
 	state.mu.Unlock()
 
-	if dest == "" { http.Error(w, "Destination not configured", 400); return }
+	if dest == "" {
+		http.Error(w, "Destination not configured", 400)
+		return
+	}
 	entries, err := os.ReadDir(dest)
-	if err != nil { http.Error(w, err.Error(), 500); return }
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
 
 	var list []SnapshotItem
 	for _, e := range entries {
 		if e.IsDir() {
 			t, err := time.Parse(timeLayout, e.Name())
-			if err != nil { 
+			if err != nil {
 				info, _ := e.Info()
-				t = info.ModTime() 
+				t = info.ModTime()
 			}
 			list = append(list, SnapshotItem{
 				Name:    e.Name(),
@@ -407,7 +499,9 @@ func performSnapshot() {
 	dest := state.Config.SnapshotDest
 	state.mu.Unlock()
 
-	if src == "" || dest == "" { return }
+	if src == "" || dest == "" {
+		return
+	}
 	os.MkdirAll(dest, 0755)
 
 	now := time.Now()
@@ -422,11 +516,15 @@ func performSnapshot() {
 	outputStr := string(output)
 
 	status := "Success"
-	if err != nil { status = "Failed" }
-	
+	if err != nil {
+		status = "Failed"
+	}
+
 	logHistory("SNAPSHOT", "📸", visualPath, status, outputStr)
 
-	if status == "Success" { enforceRetention(dest) }
+	if status == "Success" {
+		enforceRetention(dest)
+	}
 }
 
 func enforceRetention(destPath string) {
@@ -434,9 +532,13 @@ func enforceRetention(destPath string) {
 	cfg := state.Config.Retention
 	state.mu.Unlock()
 
-	if !cfg.Enabled { return }
+	if !cfg.Enabled {
+		return
+	}
 	entries, err := os.ReadDir(destPath)
-	if err != nil { return }
+	if err != nil {
+		return
+	}
 
 	type SnapInfo struct {
 		Name string
@@ -444,28 +546,40 @@ func enforceRetention(destPath string) {
 	}
 	var snaps []SnapInfo
 	for _, e := range entries {
-		if !e.IsDir() { continue }
+		if !e.IsDir() {
+			continue
+		}
 		t, err := time.Parse(timeLayout, e.Name())
-		if err == nil { snaps = append(snaps, SnapInfo{Name: e.Name(), Time: t}) }
+		if err == nil {
+			snaps = append(snaps, SnapInfo{Name: e.Name(), Time: t})
+		}
 	}
 	sort.Slice(snaps, func(i, j int) bool { return snaps[i].Time.After(snaps[j].Time) })
 
 	var toDelete []string
 	if cfg.Mode == "count" {
 		if len(snaps) > cfg.Value {
-			for _, s := range snaps[cfg.Value:] { toDelete = append(toDelete, s.Name) }
+			for _, s := range snaps[cfg.Value:] {
+				toDelete = append(toDelete, s.Name)
+			}
 		}
 	} else if cfg.Mode == "time" {
 		var cutoff time.Time
 		now := time.Now()
 		switch cfg.Unit {
-		case "days": cutoff = now.AddDate(0, 0, -cfg.Value)
-		case "weeks": cutoff = now.AddDate(0, 0, -cfg.Value*7)
-		case "months": cutoff = now.AddDate(0, -cfg.Value, 0)
-		case "years": cutoff = now.AddDate(-cfg.Value, 0, 0)
+		case "days":
+			cutoff = now.AddDate(0, 0, -cfg.Value)
+		case "weeks":
+			cutoff = now.AddDate(0, 0, -cfg.Value*7)
+		case "months":
+			cutoff = now.AddDate(0, -cfg.Value, 0)
+		case "years":
+			cutoff = now.AddDate(-cfg.Value, 0, 0)
 		}
 		for _, s := range snaps {
-			if s.Time.Before(cutoff) { toDelete = append(toDelete, s.Name) }
+			if s.Time.Before(cutoff) {
+				toDelete = append(toDelete, s.Name)
+			}
 		}
 	}
 
@@ -473,7 +587,9 @@ func enforceRetention(destPath string) {
 		count := 0
 		for _, name := range toDelete {
 			p := fmt.Sprintf("%s/%s", destPath, name)
-			if err := exec.Command("btrfs", "subvolume", "delete", p).Run(); err == nil { count++ }
+			if err := exec.Command("btrfs", "subvolume", "delete", p).Run(); err == nil {
+				count++
+			}
 		}
 		logHistory("RETENTION", "🗑️", destPath, "Success", fmt.Sprintf("Cleaned up %d old snapshots", count))
 	}
@@ -488,26 +604,36 @@ func checkMissedSnapshots() {
 	dest := state.Config.SnapshotDest
 	state.mu.Unlock()
 
-	if !sched.Enabled || dest == "" || sched.Type != "every_x" { return }
+	if !sched.Enabled || dest == "" || sched.Type != "every_x" {
+		return
+	}
 
 	val, _ := strconv.Atoi(sched.Value)
-	if val == 0 { val = 1 }
+	if val == 0 {
+		val = 1
+	}
 	var duration time.Duration
 	switch sched.Unit {
-	case "minutes": duration = time.Duration(val) * time.Minute
-	case "hours": duration = time.Duration(val) * time.Hour
-	case "days": duration = time.Duration(val) * 24 * time.Hour
+	case "minutes":
+		duration = time.Duration(val) * time.Minute
+	case "hours":
+		duration = time.Duration(val) * time.Hour
+	case "days":
+		duration = time.Duration(val) * 24 * time.Hour
 	}
 
 	entries, err := os.ReadDir(dest)
-	if err != nil { return }
+	if err != nil {
+		return
+	}
 	var lastTime time.Time
 	found := false
 	for _, e := range entries {
 		if e.IsDir() {
 			t, err := time.Parse(timeLayout, e.Name())
 			if err == nil && t.After(lastTime) {
-				lastTime = t; found = true
+				lastTime = t
+				found = true
 			}
 		}
 	}
@@ -526,17 +652,25 @@ func checkMissedSnapshots() {
 func refreshSchedules() {
 	state.mu.Lock()
 	defer state.mu.Unlock()
-	for _, id := range state.cronIDs { state.cron.Remove(id) }
+	for _, id := range state.cronIDs {
+		state.cron.Remove(id)
+	}
 	state.cronIDs = make(map[string]cron.EntryID)
 
 	addJob := func(name string, cfg ScheduleConfig, job func()) {
-		if !cfg.Enabled { return }
+		if !cfg.Enabled {
+			return
+		}
 		spec := cfg.Value
 		if cfg.Type == "every_x" {
 			val, _ := strconv.Atoi(cfg.Value)
 			unit := "m"
-			if cfg.Unit == "days" { spec = fmt.Sprintf("@every %dh", val * 24) } else {
-				if cfg.Unit == "hours" { unit = "h" }
+			if cfg.Unit == "days" {
+				spec = fmt.Sprintf("@every %dh", val*24)
+			} else {
+				if cfg.Unit == "hours" {
+					unit = "h"
+				}
 				spec = fmt.Sprintf("@every %d%s", val, unit)
 			}
 		}
@@ -550,11 +684,15 @@ func refreshSchedules() {
 	addJob("snapshot", state.Config.SnapshotSched, func() { go performSnapshot() })
 	addJob("scrub", state.Config.ScrubSched, func() {
 		p := state.Config.TargetDrive
-		if p != "" { runCommandAsync("AUTO SCRUB", "🧹", p, "btrfs", "scrub", "start", "-B", p) }
+		if p != "" {
+			runCommandAsync("AUTO SCRUB", "🧹", p, "btrfs", "scrub", "start", "-B", p)
+		}
 	})
 	addJob("balance", state.Config.BalanceSched, func() {
 		p := state.Config.TargetDrive
-		if p != "" { runCommandAsync("AUTO BALANCE", "⚖️", p, "btrfs", "balance", "start", "--full-balance", p) }
+		if p != "" {
+			runCommandAsync("AUTO BALANCE", "⚖️", p, "btrfs", "balance", "start", "--full-balance", p)
+		}
 	})
 }
 
@@ -563,7 +701,10 @@ func refreshSchedules() {
 func handleActionScrub(w http.ResponseWriter, r *http.Request) {
 	action := r.URL.Query().Get("action")
 	path := state.Config.TargetDrive
-	if path == "" { http.Error(w, "Target drive not set", 400); return }
+	if path == "" {
+		http.Error(w, "Target drive not set", 400)
+		return
+	}
 	var id int64
 	if action == "status" {
 		id = runCommandAsync("SCRUB CHECK", "🩺", path, "btrfs", "scrub", "status", path)
@@ -578,7 +719,10 @@ func handleActionScrub(w http.ResponseWriter, r *http.Request) {
 func handleActionBalance(w http.ResponseWriter, r *http.Request) {
 	action := r.URL.Query().Get("action")
 	path := state.Config.TargetDrive
-	if path == "" { http.Error(w, "Target drive not set", 400); return }
+	if path == "" {
+		http.Error(w, "Target drive not set", 400)
+		return
+	}
 	var id int64
 	if action == "status" {
 		id = runCommandAsync("BALANCE CHECK", "⚖️", path, "btrfs", "balance", "status", path)
@@ -592,14 +736,20 @@ func handleActionBalance(w http.ResponseWriter, r *http.Request) {
 
 func handleActionDefrag(w http.ResponseWriter, r *http.Request) {
 	path := state.Config.TargetDrive
-	if path == "" { http.Error(w, "Target drive not set", 400); return }
+	if path == "" {
+		http.Error(w, "Target drive not set", 400)
+		return
+	}
 	id := runCommandAsync("DEFRAG", "📦", path, "btrfs", "filesystem", "defragment", "-r", path)
 	json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "id": id})
 }
 
 func handleActionCompsize(w http.ResponseWriter, r *http.Request) {
 	path := state.Config.TargetDrive
-	if path == "" { http.Error(w, "Target drive not set", 400); return }
+	if path == "" {
+		http.Error(w, "Target drive not set", 400)
+		return
+	}
 	id := runCommandAsync("COMPSIZE", "📊", path, "compsize", path)
 	json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "id": id})
 }
@@ -609,7 +759,9 @@ func handlePurgeAllSnapshots(w http.ResponseWriter, r *http.Request) {
 		state.mu.Lock()
 		dest := state.Config.SnapshotDest
 		state.mu.Unlock()
-		if dest == "" { return }
+		if dest == "" {
+			return
+		}
 		entries, _ := os.ReadDir(dest)
 		count := 0
 		for _, e := range entries {
@@ -670,5 +822,9 @@ func loadState() {
 		json.Unmarshal(data, &loaded)
 		state.Config = loaded.Config
 		state.History = loaded.History
+		// If map was nil from JSON (empty file), make it
+		if state.Profiles == nil {
+			state.Profiles = make(map[string]Config)
+		}
 	}
 }
