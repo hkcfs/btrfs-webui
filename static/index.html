@@ -6,400 +6,649 @@
     <title>BTRFS Commander</title>
     <style>
         :root {
-            --bg: #f3f4f6; --card: #ffffff; --text: #1f2937; --border: #e5e7eb;
+            --bg: #f8fafc; --card: #ffffff; --text: #0f172a; --border: #e2e8f0;
             --accent: #2563eb; --accent-hover: #1d4ed8;
-            --danger: #dc2626; --danger-bg: #fee2e2;
-            --log-bg: #111827; --modal-overlay: rgba(0,0,0,0.7);
+            --danger: #ef4444; --danger-bg: #fee2e2;
+            --log-bg: #1e293b; --modal-overlay: rgba(0,0,0,0.75);
         }
         [data-theme="dark"] {
-            --bg: #0f172a; --card: #1e293b; --text: #cbd5e1; --border: #334155;
+            --bg: #0f172a; --card: #1e293b; --text: #f1f5f9; --border: #334155;
             --accent: #3b82f6; --accent-hover: #60a5fa;
             --danger: #ef4444; --danger-bg: #450a0a;
             --log-bg: #020617;
         }
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 0; font-size: 14px; }
-        .container { max-width: 100%; width: 98%; margin: 0 auto; padding: 15px; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 20px; font-size: 14px; }
+        .container { max-width: 98%; margin: 0 auto; }
         
-        header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid var(--border); }
-        h1 { margin: 0; font-size: 1.25rem; font-weight: 700; display: flex; align-items: center; gap: 10px; }
+        /* Layout */
+        header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid var(--border); padding-bottom: 15px; }
+        h1 { margin: 0; font-size: 1.5rem; display: flex; align-items: center; gap: 10px; }
         
-        .tab-nav { display: flex; gap: 5px; margin-bottom: 15px; }
-        .tab-btn { padding: 8px 16px; background: var(--card); border: 1px solid var(--border); color: var(--text); font-weight: 600; cursor: pointer; border-radius: 6px; font-size: 0.9rem; transition: 0.2s; }
-        .tab-btn:hover { background: var(--border); }
-        .tab-btn.active { background: var(--accent); color: white; border-color: var(--accent); }
-        .tab-content { display: none; }
+        /* Tabs */
+        .tab-nav { display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 1px solid var(--border); }
+        .tab-btn { padding: 10px 20px; background: transparent; border: none; border-bottom: 3px solid transparent; color: var(--text); font-weight: 600; cursor: pointer; opacity: 0.6; transition: 0.2s; }
+        .tab-btn:hover { opacity: 1; background: var(--border); }
+        .tab-btn.active { border-bottom-color: var(--accent); opacity: 1; }
+        .tab-content { display: none; animation: fadeIn 0.3s; }
         .tab-content.active { display: block; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
 
-        .dashboard-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 15px; margin-bottom: 20px; }
-        @media (min-width: 1400px) { .span-2 { grid-column: span 2; } }
+        /* Grid */
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 20px; }
+        .card { background: var(--card); padding: 20px; border-radius: 12px; border: 1px solid var(--border); box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); display: flex; flex-direction: column; }
+        h2 { margin: 0 0 15px 0; font-size: 1.1rem; border-bottom: 1px solid var(--border); padding-bottom: 10px; display: flex; justify-content: space-between; align-items: center; }
 
-        .card { background: var(--card); border-radius: 8px; padding: 15px; border: 1px solid var(--border); box-shadow: 0 1px 2px rgba(0,0,0,0.05); display: flex; flex-direction: column; }
-        h2 { margin: 0 0 12px 0; font-size: 1rem; font-weight: 600; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border); padding-bottom: 8px; }
-
-        input, select { padding: 6px 10px; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 4px; width: 100%; box-sizing: border-box; font-size: 0.9rem; }
-        .form-group { margin-bottom: 10px; }
-        label { display: block; margin-bottom: 4px; font-weight: 500; font-size: 0.85rem; opacity: 0.85; }
-
-        .btn { padding: 6px 12px; border-radius: 4px; border: none; font-weight: 500; cursor: pointer; transition: 0.2s; font-size: 0.85rem; display: inline-flex; align-items: center; justify-content: center; gap: 5px; }
+        /* Components */
+        .btn { padding: 8px 16px; border-radius: 6px; border: none; cursor: pointer; font-weight: 500; background: var(--border); color: var(--text); transition: 0.2s; display: inline-flex; align-items: center; gap: 5px; }
+        .btn:hover { filter: brightness(0.9); }
         .btn-primary { background: var(--accent); color: white; }
-        .btn-sec { background: var(--border); color: var(--text); }
         .btn-danger { background: var(--danger); color: white; }
-        .btn-danger-outline { background: transparent; border: 1px solid var(--danger); color: var(--danger); }
-        .btn-group { display: flex; gap: 5px; flex-wrap: wrap; }
-        .btn-group .btn { flex: 1; }
+        .btn-sm { padding: 4px 8px; font-size: 0.85rem; }
+        
+        input, select { padding: 8px; width: 100%; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); box-sizing: border-box; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; font-weight: 600; font-size: 0.9rem; }
 
-        .storage-bar-container { height: 16px; background: var(--border); border-radius: 4px; overflow: hidden; display: flex; margin: 10px 0; }
-        .storage-seg { height: 100%; transition: width 0.5s; }
-        .seg-used { background: var(--accent); } .seg-free { background: #10b981; } .seg-meta { background: #f59e0b; }
-        .legend { display: flex; gap: 15px; font-size: 0.8rem; margin-top: 5px; }
-        .dot { width: 8px; height: 8px; display: inline-block; border-radius: 50%; margin-right: 4px; }
+        /* Specific Status Items */
+        .ok-bold { font-weight: bold; color: #10b981; font-size: 1.1em; }
+        .err-red { color: #ef4444; font-weight: bold; }
 
-        .log-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px; }
-        .log-entry { background: var(--card); border: 1px solid var(--border); padding: 10px; border-radius: 6px; cursor: pointer; font-size: 0.85rem; transition: transform 0.1s; }
-        .log-header { display: flex; justify-content: space-between; margin-bottom: 5px; }
-        .log-meta { font-size: 0.75rem; opacity: 0.6; display: flex; justify-content: space-between; }
-        .log-output { display: none; background: var(--log-bg); color: #10b981; padding: 10px; margin-top: 8px; border-radius: 4px; font-family: monospace; font-size: 0.8rem; overflow-x: auto; white-space: pre-wrap; }
+        /* Storage Bar */
+        .storage-bar { height: 20px; background: var(--border); border-radius: 10px; overflow: hidden; display: flex; margin: 15px 0; }
+        .seg { height: 100%; transition: width 0.5s ease; }
+        .seg-used { background: var(--accent); }
+        .seg-meta { background: #f59e0b; }
+        .seg-free { background: #10b981; }
+        .legend { display: flex; gap: 15px; font-size: 0.85rem; }
+        .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; margin-right: 5px; }
+
+        /* Logs */
+        .log-box { max-height: 400px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+        .log-entry { background: var(--bg); padding: 10px; border-radius: 6px; border: 1px solid var(--border); cursor: pointer; }
+        .log-header { display: flex; justify-content: space-between; font-weight: 600; font-size: 0.9rem; }
+        .log-meta { font-size: 0.8rem; opacity: 0.7; margin-top: 2px; }
+        .log-output { display: none; background: var(--log-bg); color: #10b981; padding: 10px; border-radius: 4px; font-family: monospace; font-size: 0.85rem; margin-top: 10px; white-space: pre-wrap; }
         .log-entry.open .log-output { display: block; }
-        .st-Success { color: #10b981; } .st-Failed { color: #ef4444; } .st-Running { color: #3b82f6; } .st-Warning { color: #f59e0b; }
+        
+        .st-Success { color: #10b981; } .st-Failed { color: #ef4444; } .st-Warning { color: #f59e0b; }
 
-        .modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: var(--modal-overlay); display: none; align-items: center; justify-content: center; z-index: 2000; backdrop-filter: blur(2px); }
+        /* Modals */
+        .modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: var(--modal-overlay); display: none; align-items: center; justify-content: center; z-index: 1000; backdrop-filter: blur(4px); }
         .modal.active { display: flex; }
-        .modal-box { background: var(--card); width: 600px; max-width: 95%; max-height: 90vh; border-radius: 8px; padding: 20px; display: flex; flex-direction: column; box-shadow: 0 10px 25px rgba(0,0,0,0.3); border: 1px solid var(--border); }
-        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid var(--border); }
-        .modal-body { overflow-y: auto; flex: 1; }
-        .file-list-item { display: flex; align-items: center; padding: 6px 10px; border-bottom: 1px solid var(--border); cursor: pointer; font-size: 0.9rem; }
-        .file-list-item:hover { background: var(--bg); }
-        .stat-row { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid var(--bg); }
+        .modal-content { background: var(--card); width: 800px; max-width: 95%; max-height: 90vh; border-radius: 12px; padding: 25px; display: flex; flex-direction: column; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); }
+        .modal-body { overflow-y: auto; flex: 1; margin: 15px 0; border: 1px solid var(--border); border-radius: 6px; }
+        
+        /* Tables & Lists */
+        .list-item { padding: 10px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+        .list-item:hover { background: var(--bg); }
+        .list-item.selected { background: var(--accent); color: white; }
+        
+        /* Job Cards */
+        .job-card { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 15px; margin-bottom: 15px; }
     </style>
 </head>
 <body>
     <div class="container">
         <header>
             <h1>🍃 BTRFS Commander</h1>
-            <div style="display:flex; gap:10px; align-items: center;">
-                <span id="clock" style="font-family:monospace; font-size:0.9rem; opacity:0.7"></span>
-                <button class="btn btn-sec" onclick="toggleTheme()">🌗</button>
+            <div style="display:flex; gap:10px; align-items:center">
+                <span id="clock" style="font-family:monospace; margin-right:15px; opacity:0.7"></span>
+                <button class="btn" onclick="toggleTheme()">🌗 Theme</button>
+                <button class="btn btn-danger" onclick="logout()" id="logoutBtn" style="display:none">Logout</button>
             </div>
         </header>
 
         <div class="tab-nav">
             <button class="tab-btn active" onclick="switchTab('dashboard')">📊 Dashboard</button>
-            <button class="tab-btn" onclick="switchTab('snapshots')">📸 Snapshots</button>
+            <button class="tab-btn" onclick="switchTab('jobs')">📸 Backup Jobs</button>
             <button class="tab-btn" onclick="switchTab('settings')">⚙ Settings</button>
         </div>
 
+        <!-- DASHBOARD TAB -->
         <div id="dashboard" class="tab-content active">
-            <div class="dashboard-grid">
-                <div class="card span-2">
-                    <h2>💾 Storage Usage <button class="btn btn-sec btn-sm" onclick="loadStorage()">↻</button></h2>
+            <div class="grid">
+                <!-- Storage -->
+                <div class="card" style="grid-column: span 2;">
+                    <h2>💾 Storage Usage <button class="btn btn-sm" onclick="loadStorage()">↻</button></h2>
                     <div id="storageLoading">Loading...</div>
-                    <div id="storageDisplay" style="display:none; flex:1; display:flex; flex-direction:column; justify-content:center;">
-                        <div class="storage-bar-container">
-                            <div id="barUsed" class="storage-seg seg-used" style="width:0%"></div>
-                            <div id="barMeta" class="storage-seg seg-meta" style="width:0%"></div>
-                            <div id="barFree" class="storage-seg seg-free" style="width:0%"></div>
+                    <div id="storageContent" style="display:none">
+                        <div class="storage-bar">
+                            <div id="barUsed" class="seg seg-used" style="width:0%"></div>
+                            <div id="barMeta" class="seg seg-meta" style="width:0%"></div>
+                            <div id="barFree" class="seg seg-free" style="width:0%"></div>
                         </div>
-                        <div class="legend" style="justify-content: space-between;">
-                            <span><span class="dot seg-used"></span>Used: <b id="valUsed"></b></span>
-                            <span><span class="dot seg-meta"></span>Allocated: <b id="valAlloc"></b></span>
-                            <span><span class="dot seg-free"></span>Total: <b id="valTotal"></b></span>
+                        <div class="legend">
+                            <span><span class="dot seg-used"></span>Data: <b id="valUsed"></b></span>
+                            <span><span class="dot seg-meta"></span>Metadata: <b id="valMeta"></b></span>
+                            <span><span class="dot seg-free"></span>Free: <b id="valFree"></b></span>
+                            <span style="margin-left:auto; color:gray">Unallocated: <b id="valUnalloc" style="color:var(--text)"></b></span>
                         </div>
-                        <div style="margin-top:10px; padding: 8px; background: var(--bg); border-radius: 4px; text-align: center;">Unallocated Space: <b id="valUnalloc" style="color:var(--accent)"></b></div>
                     </div>
                 </div>
+
+                <!-- Health -->
                 <div class="card">
-                    <h2>🩺 Drive Health (SMART)</h2>
-                    <div id="smartData" style="flex:1">Loading...</div>
-                    <div class="btn-group" style="margin-top:10px">
-                        <button class="btn btn-sec" onclick="runSmartTest('short')">Short</button>
-                        <button class="btn btn-sec" onclick="runSmartTest('long')">Long</button>
+                    <h2>🩺 Drive Health</h2>
+                    <div id="smartData">Loading...</div>
+                    <div style="margin-top:10px; display:flex; gap:5px;">
+                        <button class="btn btn-sm" onclick="runSmart('short')">Short Test</button>
+                        <button class="btn btn-sm" onclick="runSmart('long')">Long Test</button>
                     </div>
                 </div>
+
+                <!-- BTRFS Stats -->
                 <div class="card">
-                    <h2>⚠️ Device Errors <button class="btn btn-sec btn-sm" onclick="loadBtrfsStats()">↻</button></h2>
-                    <div id="btrfsErrors" style="font-family:monospace; font-size:0.85rem; overflow-y:auto; max-height:150px;">Loading...</div>
+                    <h2>⚠️ BTRFS Errors</h2>
+                    <div id="btrfsStats" style="font-family:monospace; font-size:0.9rem;">Loading...</div>
                 </div>
+
+                <!-- Maintenance -->
                 <div class="card">
-                    <h2>🛠 Maintenance Actions</h2>
-                    <div style="display:flex; flex-direction:column; gap:8px;">
-                        <div style="display:flex; gap:5px; align-items:center;">
-                            <span style="width:60px; font-weight:600">Scrub</span>
-                            <button class="btn btn-primary" style="flex:1" onclick="doAction('scrub','start')">Start</button>
-                            <button class="btn btn-sec" onclick="doAction('scrub','status',true)">?</button>
-                            <button class="btn btn-danger" onclick="doAction('scrub','cancel')">Stop</button>
+                    <h2>🛠 Maintenance</h2>
+                    <div style="display:flex; flex-direction:column; gap:10px;">
+                        <div style="display:flex; gap:10px; align-items:center;">
+                            <strong style="width:60px">Scrub</strong>
+                            <button class="btn btn-primary btn-sm" onclick="doAction('scrub','start')">Start</button>
+                            <button class="btn btn-sm" onclick="doAction('scrub','status',true)">Status</button>
+                            <button class="btn btn-danger btn-sm" onclick="doAction('scrub','cancel')">Stop</button>
                         </div>
-                        <div style="display:flex; gap:5px; align-items:center;">
-                            <span style="width:60px; font-weight:600">Balance</span>
-                            <button class="btn btn-primary" style="flex:1" onclick="doAction('balance','start')">Start</button>
-                            <button class="btn btn-sec" onclick="doAction('balance','status',true)">?</button>
-                            <button class="btn btn-danger" onclick="doAction('balance','cancel')">Stop</button>
-                        </div>
-                        <div style="display:flex; gap:5px; margin-top:5px">
-                            <button class="btn btn-sec" style="flex:1" onclick="doAction('defrag')">Defrag</button>
-                            <button class="btn btn-sec" style="flex:1" onclick="doAction('compsize','',true)">Compsize</button>
+                        <div style="display:flex; gap:10px; align-items:center;">
+                            <strong style="width:60px">Balance</strong>
+                            <button class="btn btn-primary btn-sm" onclick="doAction('balance','start')">Start</button>
+                            <button class="btn btn-sm" onclick="doAction('balance','status',true)">Status</button>
+                            <button class="btn btn-danger btn-sm" onclick="doAction('balance','cancel')">Stop</button>
                         </div>
                     </div>
                 </div>
             </div>
-            <h3 style="margin: 20px 0 10px 0; border-bottom: 1px solid var(--border); padding-bottom:5px; font-size:1rem;">Activity Log</h3>
-            <div id="logListDashboard" class="log-grid"></div>
+
+            <h3 style="margin-top:30px; border-bottom:1px solid var(--border); padding-bottom:10px;">Recent Activity</h3>
+            <div id="dashLogs" class="log-box">Loading logs...</div>
         </div>
 
-        <div id="snapshots" class="tab-content">
-            <div class="dashboard-grid">
-                <div class="card">
-                    <h2>📸 Controls</h2>
-                    <div style="display:flex; flex-direction:column; gap:10px; height:100%; justify-content:center;">
-                        <button class="btn btn-primary" style="padding:15px; font-size:1rem;" onclick="doAction('snapshot')">📸 Take Snapshot Now</button>
-                        <button class="btn btn-sec" style="padding:15px; font-size:1rem;" onclick="viewSnapshots()">📂 View & Browse</button>
-                    </div>
+        <!-- JOBS TAB -->
+        <div id="jobs" class="tab-content">
+            <div class="grid">
+                <div class="card" style="grid-column: span 2">
+                    <h2>📸 Backup Jobs <button class="btn btn-primary btn-sm" onclick="editJob('new')">+ New Job</button></h2>
+                    <div id="jobList">Loading...</div>
                 </div>
-                <div class="card span-2">
-                    <h2>Danger Zone</h2>
-                    <div class="btn-group">
-                        <button class="btn btn-sec" onclick="clearLogs()">Clear History Logs</button>
-                        <button class="btn btn-danger-outline" onclick="purgeAll()">🔥 Delete ALL Snapshots</button>
+                
+                <div class="card">
+                    <h2>⚠️ Danger Zone</h2>
+                    <div style="display:flex; flex-direction:column; gap:10px;">
+                        <button class="btn" onclick="clearLogs()">Clear Log History</button>
+                        <button class="btn btn-danger" onclick="purgeAll()">🔥 Purge ALL Snapshots</button>
                     </div>
                 </div>
             </div>
-            <h3 style="margin: 20px 0 10px 0; border-bottom: 1px solid var(--border); padding-bottom:5px; font-size:1rem;">Full History</h3>
-            <div id="logListFull" class="log-grid"></div>
+            
+            <h3 style="margin-top:30px;">Full History</h3>
+            <div id="fullLogs" class="log-box"></div>
         </div>
 
+        <!-- SETTINGS TAB -->
         <div id="settings" class="tab-content">
-            <div class="dashboard-grid">
-                <!-- Profiles Card -->
-                <div class="card">
-                    <h2>📑 Profiles (Switch Config)</h2>
-                    <div style="display:flex; gap:5px; margin-bottom:10px;">
-                        <input type="text" id="profileName" placeholder="Profile Name">
-                        <button class="btn btn-primary" onclick="saveProfile()">Save Current</button>
+            <div class="card" style="max-width:600px">
+                <h2>⚙ Global Settings</h2>
+                <form id="globalForm">
+                    <div class="form-group">
+                        <label>Target Drive (Scrub/Balance/Health)</label>
+                        <input type="text" id="target_drive" placeholder="/host/mnt/data">
+                        <small style="opacity:0.7">The drive mounted in Docker to perform maintenance on.</small>
                     </div>
-                    <div id="profileList" style="max-height:200px; overflow-y:auto; border:1px solid var(--border); border-radius:4px;"></div>
-                </div>
 
-                <div class="card span-2">
-                    <h2>⚙ Active Configuration</h2>
-                    <form id="configForm">
-                        <div class="form-group"><label>Target Drive</label><input type="text" id="target_drive" placeholder="/host/mnt/data"></div>
-                        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:15px;">
-                            <div class="form-group"><label>Snapshot Source</label><input type="text" id="snapshot_source" placeholder="/host/source"></div>
-                            <div class="form-group"><label>Snapshot Dest</label><input type="text" id="snapshot_dest" placeholder="/host/dest"></div>
-                        </div>
-                        <div style="background:var(--bg); padding:15px; border-radius:6px; margin: 15px 0;">
-                            <div id="schedulers_container"></div>
-                        </div>
-                        <div class="form-group" style="border:1px solid var(--border); padding:10px; border-radius:6px;">
-                            <label style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-                                <span>🗑 Retention</span><input type="checkbox" id="retention_enabled" style="width:auto">
-                            </label>
-                            <div class="btn-group">
-                                <select id="retention_mode" onchange="toggleRetentionUI()"><option value="count">Count</option><option value="time">Time</option></select>
-                                <input type="number" id="retention_value" placeholder="10" style="width:80px">
-                                <select id="retention_unit" style="width:100px"><option value="days">Days</option><option value="weeks">Weeks</option><option value="months">Months</option></select>
-                            </div>
-                        </div>
-                        <button type="submit" class="btn btn-primary" style="width:100%; margin-top:10px; padding:10px;">💾 Save Configuration</button>
-                    </form>
-                </div>
+                    <div class="form-group">
+                        <label>Log Level</label>
+                        <select id="log_level">
+                            <option value="NONE">None</option>
+                            <option value="DEFAULT">Default (Standard)</option>
+                            <option value="VERBOSE">Verbose (Debug everything)</option>
+                        </select>
+                    </div>
+
+                    <h3>Global Schedules</h3>
+                    <div id="globalScheds"></div>
+
+                    <button type="submit" class="btn btn-primary" style="width:100%; justify-content:center; margin-top:20px;">Save Global Config</button>
+                </form>
             </div>
         </div>
     </div>
 
-    <!-- Modals -->
-    <div id="snapListModal" class="modal"><div class="modal-box"><div class="modal-header"><h2>Snapshots</h2><button class="btn btn-sec btn-sm" onclick="closeModal('snapListModal')">×</button></div><div id="snapListBody" class="modal-body"></div></div></div>
-    <div id="browserModal" class="modal"><div class="modal-box" style="height:80vh"><div class="modal-header"><h2>Browse</h2><button class="btn btn-sec btn-sm" onclick="closeModal('browserModal')">×</button></div><div style="display:flex; gap:10px; margin-bottom:10px; align-items:center; background:var(--bg); padding:5px; border-radius:4px;"><button class="btn btn-sec btn-sm" onclick="browseUp()">⬆</button><span id="currentPath" style="font-family:monospace; font-size:0.8rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"></span></div><div id="fileList" class="modal-body" style="border:1px solid var(--border); border-radius:4px;"></div></div></div>
-    <div id="outModal" class="modal"><div class="modal-box" style="height:auto; max-width:800px;"><div class="modal-header"><h2>Output</h2><button class="btn btn-sec btn-sm" onclick="closeModal('outModal')">×</button></div><div id="outContent" style="background:var(--log-bg); color:#10b981; padding:15px; border-radius:6px; max-height:400px; overflow:auto; white-space:pre-wrap; font-family:monospace; font-size:0.85rem"></div></div></div>
+    <!-- Job Modal (Updated with Advanced Features) -->
+    <div id="jobModal" class="modal">
+        <div class="modal-content">
+            <h2>Edit Backup Job</h2>
+            <form id="jobForm">
+                <input type="hidden" id="j_id">
+                <div class="form-group"><label>Name</label><input type="text" id="j_name" required></div>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:15px;">
+                    <div class="form-group"><label>Source Path</label><input type="text" id="j_src" required></div>
+                    <div class="form-group"><label>Destination Path</label><input type="text" id="j_dest" required></div>
+                </div>
+                
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:15px; margin-bottom:15px;">
+                    <div style="background:var(--bg); padding:15px; border-radius:8px;">
+                        <label style="display:flex; justify-content:space-between"><span>Schedule</span> <input type="checkbox" id="j_sched_en" style="width:auto"></label>
+                        <div style="display:flex; gap:5px; margin-top:5px;">
+                            <select id="j_sched_type"><option value="every_x">Every X</option><option value="cron">Cron</option></select>
+                            <input type="text" id="j_sched_val" placeholder="15" style="width:50px">
+                            <select id="j_sched_unit" style="width:70px"><option value="minutes">Min</option><option value="hours">Hr</option><option value="days">Day</option></select>
+                        </div>
+                    </div>
+                    <div style="background:var(--bg); padding:15px; border-radius:8px;">
+                        <label style="display:flex; justify-content:space-between"><span>Retention</span> <input type="checkbox" id="j_ret_en" style="width:auto"></label>
+                        <div style="display:flex; gap:5px; margin-top:5px;">
+                            <select id="j_ret_mode"><option value="count">Count</option><option value="time">Time</option></select>
+                            <input type="number" id="j_ret_val" placeholder="10" style="width:50px">
+                            <select id="j_ret_unit" style="width:70px"><option value="days">Day</option><option value="weeks">Wk</option></select>
+                        </div>
+                    </div>
+                </div>
+
+                <details style="background:var(--bg); padding:15px; border-radius:8px; margin-bottom:15px;">
+                    <summary style="cursor:pointer; font-weight:600">Advanced (Hooks & Replication)</summary>
+                    <div style="margin-top:10px; display:grid; gap:10px;">
+                        <div class="form-group"><label>Pre-Hook Command</label><input type="text" id="j_pre" placeholder="e.g. docker stop db"></div>
+                        <div class="form-group"><label>Post-Hook Command</label><input type="text" id="j_post" placeholder="e.g. docker start db"></div>
+                        <hr style="width:100%; border:0; border-top:1px solid var(--border)">
+                        <label style="display:flex; gap:10px; align-items:center;">
+                            <input type="checkbox" id="j_repl_en" style="width:auto"> Enable Replication (Send/Receive)
+                        </label>
+                        <div class="form-group"><label>Replication Target</label><input type="text" id="j_repl_dest" placeholder="/host/mnt/backup_drive/folder"></div>
+                    </div>
+                </details>
+
+                <div style="margin-top:20px; display:flex; justify-content:flex-end; gap:10px;">
+                    <button type="button" class="btn btn-danger" onclick="deleteJob()">Delete</button>
+                    <button type="button" class="btn" onclick="closeModal('jobModal')">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save Job</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Output Modal -->
+    <div id="outputModal" class="modal">
+        <div class="modal-content" style="height: auto; max-height:80vh;">
+            <h2>Command Output <button class="btn btn-sm" onclick="closeModal('outputModal')" style="float:right">Close</button></h2>
+            <div id="cmdOutput" class="log-output" style="display:block; max-height:50vh; overflow:auto;"></div>
+        </div>
+    </div>
+
+    <!-- Snapshots List Modal (Updated with Diff & Rollback) -->
+    <div id="snapListModal" class="modal">
+        <div class="modal-content">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                <h2 style="margin:0">Snapshots</h2>
+                <div style="display:flex; gap:10px">
+                    <button class="btn btn-primary btn-sm" onclick="compareSnapshots()">🔍 Compare Selected (2)</button>
+                    <button class="btn btn-sm" onclick="closeModal('snapListModal')">Close</button>
+                </div>
+            </div>
+            <div id="snapListContainer" class="modal-body"></div>
+        </div>
+    </div>
+
+    <!-- Browser Modal -->
+    <div id="browserModal" class="modal">
+        <div class="modal-content">
+            <h2>Browse <button class="btn btn-sm" onclick="closeModal('browserModal')" style="float:right">Close</button></h2>
+            <div style="padding:10px; background:var(--bg); margin-bottom:10px; display:flex; gap:10px; align-items:center;">
+                <button class="btn btn-sm" onclick="browseUp()">⬆ Up</button>
+                <code id="browserPath" style="flex:1"></code>
+            </div>
+            <div id="fileList" class="modal-body"></div>
+        </div>
+    </div>
 
     <script>
         const API = '/api';
-        let currentPath = "";
+        let config = { jobs: [] };
+        let currentBrowserPath = "";
+        let selectedSnaps = [];
+        let currentJobId = "";
 
         // --- Core ---
         function switchTab(id) {
-            document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
-            document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(e => e.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(e => e.classList.remove('active'));
             document.getElementById(id).classList.add('active');
             event.target.classList.add('active');
             if(id === 'dashboard') loadDashboard();
-            if(id === 'settings') loadProfiles();
+            if(id === 'jobs') renderJobs();
         }
 
         async function loadConfig() {
             const res = await fetch(`${API}/config`);
-            const data = await res.json();
+            if(res.status === 401) { document.body.innerHTML = "<h2 style='text-align:center'>Unauthorized. <a href='/api/login'>Login</a></h2>"; return; }
+            config = await res.json();
             
-            ['target_drive', 'snapshot_source', 'snapshot_dest'].forEach(k => document.getElementById(k).value = data[k] || '');
-            if(data.retention) {
-                document.getElementById('retention_enabled').checked = data.retention.enabled;
-                document.getElementById('retention_mode').value = data.retention.mode;
-                document.getElementById('retention_value').value = data.retention.value;
-                document.getElementById('retention_unit').value = data.retention.unit;
-                toggleRetentionUI();
-            }
-            ['snapshot_sched', 'scrub_sched', 'balance_sched'].forEach(key => {
-                const cfg = data[key];
-                if(cfg) {
-                    document.getElementById(`${key}_enabled`).checked = cfg.enabled;
-                    document.getElementById(`${key}_type`).value = cfg.type || 'every_x';
-                    document.getElementById(`${key}_value`).value = cfg.value || '';
-                    document.getElementById(`${key}_unit`).value = cfg.unit || 'minutes';
-                    toggleSched(key);
-                }
-            });
-        }
-
-        document.getElementById('configForm').onsubmit = async (e) => {
-            e.preventDefault();
-            const payload = {
-                target_drive: document.getElementById('target_drive').value,
-                snapshot_source: document.getElementById('snapshot_source').value,
-                snapshot_dest: document.getElementById('snapshot_dest').value,
-                retention: {
-                    enabled: document.getElementById('retention_enabled').checked,
-                    mode: document.getElementById('retention_mode').value,
-                    value: parseInt(document.getElementById('retention_value').value),
-                    unit: document.getElementById('retention_unit').value
-                }
-            };
-            ['snapshot_sched', 'scrub_sched', 'balance_sched'].forEach(key => {
-                payload[key] = {
-                    enabled: document.getElementById(`${key}_enabled`).checked,
-                    type: document.getElementById(`${key}_type`).value,
-                    value: document.getElementById(`${key}_value`).value,
-                    unit: document.getElementById(`${key}_unit`).value
-                };
-            });
-            await fetch(`${API}/config`, { method: 'POST', body: JSON.stringify(payload) });
-            alert("Settings Saved");
-        };
-
-        // --- Profiles ---
-        async function loadProfiles() {
-            const res = await fetch(`${API}/profiles/list`);
-            const keys = await res.json();
-            document.getElementById('profileList').innerHTML = keys.map(k => `
-                <div style="display:flex; justify-content:space-between; padding:8px; border-bottom:1px solid var(--border)">
-                    <b>${k}</b>
-                    <div class="btn-group">
-                        <button class="btn btn-sec btn-sm" onclick="loadProfile('${k}')">Load</button>
-                        <button class="btn btn-danger-outline btn-sm" onclick="deleteProfile('${k}')">×</button>
+            // Global
+            document.getElementById('target_drive').value = config.target_drive || '';
+            document.getElementById('log_level').value = config.log_level || 'DEFAULT';
+            
+            // Scheds
+            const renderSched = (key, name, c) => `
+                <div style="display:flex; justify-content:space-between; align-items:center; background:var(--bg); padding:10px; border-radius:6px; margin-bottom:5px;">
+                    <span>${name}</span>
+                    <div style="display:flex; gap:5px; align-items:center;">
+                        <input type="checkbox" style="width:auto" ${c.enabled?'checked':''} onchange="config.${key}.enabled=this.checked">
+                        <input type="text" value="${c.value}" style="width:60px" onchange="config.${key}.value=this.value">
+                        <select style="width:80px" onchange="config.${key}.unit=this.value">
+                            <option value="days" ${c.unit=='days'?'selected':''}>Days</option>
+                            <option value="hours" ${c.unit=='hours'?'selected':''}>Hrs</option>
+                        </select>
                     </div>
-                </div>
-            `).join('');
-        }
-        async function saveProfile() {
-            const name = document.getElementById('profileName').value;
-            if(!name) return alert("Enter a name");
-            await fetch(`${API}/profiles/save?name=${encodeURIComponent(name)}`, {method:'POST'});
-            loadProfiles();
-        }
-        async function loadProfile(name) {
-            if(!confirm("Load profile? Unsaved changes will be lost.")) return;
-            await fetch(`${API}/profiles/load?name=${encodeURIComponent(name)}`, {method:'POST'});
-            loadConfig();
-        }
-        async function deleteProfile(name) {
-            if(confirm("Delete profile?")) { await fetch(`${API}/profiles/delete?name=${encodeURIComponent(name)}`, {method:'POST'}); loadProfiles(); }
+                </div>`;
+            
+            document.getElementById('globalScheds').innerHTML = 
+                renderSched('scrub_sched', 'Auto Scrub', config.scrub_sched) +
+                renderSched('balance_sched', 'Auto Balance', config.balance_sched);
+
+            renderJobs();
+            loadDashboard();
+            
+            // Check Auth Cookie for Logout Button
+            if(document.cookie.includes('session_token')) document.getElementById('logoutBtn').style.display = 'block';
         }
 
-        // --- Dashboard Data ---
+        function logout() {
+            document.cookie = "session_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+            window.location.reload();
+        }
+
+        // --- Dashboard ---
         async function loadDashboard() {
             fetch(`${API}/storage/usage`).then(r=>r.json()).then(data => {
-                document.getElementById('storageLoading').style.display='none';
-                document.getElementById('storageDisplay').style.display='flex';
-                const toGB = (b) => (b / 1024 / 1024 / 1024).toFixed(1) + " GB";
+                document.getElementById('storageLoading').style.display = 'none';
+                document.getElementById('storageContent').style.display = 'block';
+                const toGB = (b) => (b/1024/1024/1024).toFixed(1) + " GB";
                 document.getElementById('valUsed').innerText = toGB(data.used);
-                document.getElementById('valTotal').innerText = toGB(data.device_size);
-                document.getElementById('valAlloc').innerText = toGB(data.device_allocated);
+                document.getElementById('valMeta').innerText = toGB(data.metadata_used);
+                document.getElementById('valFree').innerText = toGB(data.free);
                 document.getElementById('valUnalloc').innerText = toGB(data.device_unallocated);
+                
                 const usedPct = (data.used / data.device_size) * 100;
-                const metaPct = ((data.device_allocated - data.used) / data.device_size) * 100;
+                const metaPct = ((data.device_allocated - data.used) / data.device_size) * 100; // rough approx for visuals
+                const freePct = 100 - usedPct - metaPct;
                 document.getElementById('barUsed').style.width = usedPct + "%";
                 document.getElementById('barMeta').style.width = metaPct + "%";
-                document.getElementById('barFree').style.width = (100 - usedPct - metaPct) + "%";
-            }).catch(e => document.getElementById('storageLoading').innerText="N/A");
-
-            fetch(`${API}/health/smart`).then(r=>r.json()).then(data => {
-                let status = data.smart_status?.passed ? 'PASSED' : 'FAILED';
-                let color = data.smart_status?.passed ? '#10b981' : '#ef4444';
-                let temp = data.temperature?.current || '?';
-                let family = data.model_family || data.model_name || 'Unknown';
-                document.getElementById('smartData').innerHTML = `<div class="stat-row"><span>Model</span><b>${family}</b></div><div class="stat-row"><span>Status</span><b style="color:${color}">${status}</b></div><div class="stat-row"><span>Temp</span><b>${temp}°C</b></div>`;
+                document.getElementById('barFree').style.width = freePct + "%";
             });
 
             fetch(`${API}/health/btrfs`).then(r=>r.json()).then(data => {
-                let txt = "";
+                let html = "";
                 for(const [dev, stats] of Object.entries(data)) {
-                    let hasErr = false;
-                    for(const [k,v] of Object.entries(stats)) { if(v > 0) { txt += `<div style="color:var(--danger)">${dev} ${k}: ${v} ⚠</div>`; hasErr = true; } }
-                    if(!hasErr) txt += `<div style="color:var(--text); opacity:0.6">${dev}: OK</div>`;
+                    let rows = "";
+                    for(const [k,v] of Object.entries(stats)) {
+                        let color = (v === "OK" || v == "0") ? "#10b981" : "#ef4444";
+                        let weight = (v === "OK") ? "ok-bold" : (v!="0"?"err-red":"");
+                        rows += `<div>${k}: <span class="${weight}" style="color:${color}">${v}</span></div>`;
+                    }
+                    html += `<div style="margin-bottom:5px;"><strong>${dev}</strong>${rows}</div>`;
                 }
-                document.getElementById('btrfsErrors').innerHTML = txt || "No stats";
+                document.getElementById('btrfsStats').innerHTML = html || "No stats";
             });
+
+            fetch(`${API}/health/smart`).then(r=>r.json()).then(data => {
+                const s = data.smart_status?.passed ? "PASSED" : "FAILED";
+                const c = data.smart_status?.passed ? "#10b981" : "#ef4444";
+                document.getElementById('smartData').innerHTML = `
+                    <div>Model: <b>${data.model_name || 'Unknown'}</b></div>
+                    <div>Status: <b style="color:${c}">${s}</b></div>
+                    <div>Temp: <b>${data.temperature?.current || '?'}°C</b></div>
+                `;
+            });
+            loadLogs();
         }
 
-        // --- Actions & Logs ---
-        async function doAction(type, action, showOutput=false) {
+        // --- Jobs ---
+        function renderJobs() {
+            const list = document.getElementById('jobList');
+            if(!config.jobs || config.jobs.length === 0) { list.innerHTML = "<p style='padding:20px; text-align:center'>No jobs configured.</p>"; return; }
+            
+            list.innerHTML = config.jobs.map((j, i) => `
+                <div class="job-card">
+                    <div style="display:flex; justify-content:space-between; margin-bottom:10px;">
+                        <h3 style="margin:0">${j.name}</h3>
+                        <div>
+                            <button class="btn btn-sm" onclick="editJob(${i})">Edit</button>
+                            <button class="btn btn-primary btn-sm" onclick="runJob('${j.id}')">Run Now</button>
+                        </div>
+                    </div>
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; font-size:0.9rem; opacity:0.8;">
+                        <div>Src: ${j.source}</div>
+                        <div>Dest: ${j.dest}</div>
+                        <div>Sched: ${j.schedule.enabled ? j.schedule.value + ' ' + j.schedule.unit : 'Off'}</div>
+                        <div>Hooks: ${j.pre_command || j.post_command ? '✅' : '❌'}</div>
+                    </div>
+                    <button class="btn btn-sm" style="width:100%; margin-top:10px;" onclick="viewSnapshots('${j.id}')">📂 View Snapshots</button>
+                </div>
+            `).join('');
+        }
+
+        // --- Modals & Actions ---
+        
+        async function doAction(type, action, output=false) {
             if(!confirm("Are you sure?")) return;
             const res = await fetch(`${API}/action/${type}?action=${action}`);
             const data = await res.json();
-            if(showOutput) pollLog(data.id); else setTimeout(loadHistory, 1000);
+            if(output) pollLog(data.id); else { alert("Started"); loadLogs(); }
         }
-        async function loadHistory() {
-            const res = await fetch(`${API}/history`);
+
+        async function runJob(id) {
+            if(!confirm("Run job?")) return;
+            await fetch(`${API}/action/job?id=${id}`);
+            loadLogs();
+        }
+
+        async function runSmart(type) {
+            const res = await fetch(`${API}/health/test?type=${type}`);
             const data = await res.json();
-            const render = (logs) => logs.map(l => `<div class="log-entry" onclick="this.classList.toggle('open')"><div class="log-header"><b>${l.emoji} ${l.type}</b><b class="st-${l.status.split(' ')[0]}">${l.status}</b></div><div class="log-meta"><span>${l.timestamp}</span><span>${l.duration}</span></div><div class="log-output">${l.output}</div></div>`).join('');
-            document.getElementById('logListDashboard').innerHTML = render(data.slice(0, 8));
-            document.getElementById('logListFull').innerHTML = render(data);
+            pollLog(data.id);
         }
-        async function runSmartTest(type) { fetch(`${API}/health/test?type=${type}`).then(r=>r.json()).then(d=>pollLog(d.id)); }
+
+        async function loadLogs() {
+            const res = await fetch(`${API}/history`);
+            const logs = await res.json();
+            const render = (ls) => ls.map(l => `
+                <div class="log-entry" onclick="this.classList.toggle('open')">
+                    <div class="log-header">
+                        <span>${l.emoji} ${l.type}</span>
+                        <span class="st-${l.status.split(' ')[0]}">${l.status}</span>
+                    </div>
+                    <div class="log-meta">${l.timestamp} • ${l.duration}</div>
+                    <div class="log-output">${l.output}</div>
+                </div>
+            `).join('');
+            document.getElementById('dashLogs').innerHTML = render(logs.slice(0, 8));
+            document.getElementById('fullLogs').innerHTML = render(logs);
+        }
+
         function pollLog(id) {
-            document.getElementById('outModal').classList.add('active');
+            document.getElementById('outputModal').classList.add('active');
+            const el = document.getElementById('cmdOutput');
+            el.innerText = "Waiting for output...";
             const interval = setInterval(async () => {
                 const res = await fetch(`${API}/history`);
-                const hist = await res.json();
-                const log = hist.find(l => l.id === id);
-                if(log) { document.getElementById('outContent').innerText = log.output || "Running..."; if(log.status !== "Running...") clearInterval(interval); }
+                const logs = await res.json();
+                const l = logs.find(x => x.id === id);
+                if(l) {
+                    el.innerText = l.output || "Running...";
+                    if(l.status !== "Running...") clearInterval(interval);
+                }
             }, 1000);
         }
 
-        // --- Snapshots & Browser ---
-        async function viewSnapshots() {
+        // --- Snapshots & Diff & Restore ---
+        async function viewSnapshots(jobId) {
+            currentJobId = jobId;
+            selectedSnaps = [];
             document.getElementById('snapListModal').classList.add('active');
-            const res = await fetch(`${API}/snapshots/list`);
+            const res = await fetch(`${API}/snapshots/list?job_id=${jobId}`);
             const list = await res.json();
-            document.getElementById('snapListBody').innerHTML = list.length ? list.map(s => `<div style="display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid var(--border)"><div style="overflow:hidden"><div style="font-weight:600; font-family:monospace">${s.name}</div><div style="font-size:0.8rem; opacity:0.6">${s.date}</div></div><div style="display:flex; gap:5px;"><button class="btn btn-sec btn-sm" onclick="exploreSnapshot('${s.path}')">📂</button><button class="btn btn-danger-outline btn-sm" onclick="deleteSnapshot('${s.path}')">🗑</button></div></div>`).join('') : "No snapshots.";
+            document.getElementById('snapListContainer').innerHTML = list.length ? list.map(s => `
+                <div class="list-item">
+                    <div style="display:flex; align-items:center; gap:10px;">
+                        <input type="checkbox" onchange="selectSnap(this, '${s.path}')">
+                        <div>
+                            <div style="font-weight:bold; font-family:monospace">${s.name}</div>
+                            <div style="font-size:0.8rem; opacity:0.6">${s.date}</div>
+                        </div>
+                    </div>
+                    <div style="display:flex; gap:5px;">
+                        <button class="btn btn-sm" onclick="rollback('${s.path}')" title="Restore this version">♻️</button>
+                        <button class="btn btn-sm" onclick="browse('${s.path}')">📂</button>
+                        <button class="btn btn-danger btn-sm" onclick="delSnap('${s.path}')">🗑</button>
+                    </div>
+                </div>
+            `).join('') : "No snapshots found.";
         }
-        async function exploreSnapshot(path) { currentPath = path; document.getElementById('browserModal').classList.add('active'); await loadBrowserPath(path); }
-        async function loadBrowserPath(path) {
-            document.getElementById('currentPath').innerText = path;
+
+        function selectSnap(cb, path) {
+            if(cb.checked) selectedSnaps.push(path);
+            else selectedSnaps = selectedSnaps.filter(p => p !== path);
+        }
+
+        async function compareSnapshots() {
+            if(selectedSnaps.length !== 2) { alert("Select exactly 2 snapshots to compare."); return; }
+            const res = await fetch(`${API}/snapshots/diff?a=${encodeURIComponent(selectedSnaps[0])}&b=${encodeURIComponent(selectedSnaps[1])}`);
+            const data = await res.json();
+            pollLog(data.id);
+        }
+
+        async function rollback(path) {
+            if(confirm("⚠ WARNING: This will overwrite your current live data with this snapshot! The current state will be saved as a backup folder. Continue?")) {
+                const res = await fetch(`${API}/snapshots/rollback?job_id=${currentJobId}&path=${encodeURIComponent(path)}`);
+                if(res.ok) { alert("Rollback triggered. Reboot might be required depending on path."); loadLogs(); }
+            }
+        }
+
+        async function browse(path) {
+            currentBrowserPath = path;
+            document.getElementById('browserModal').classList.add('active');
+            document.getElementById('browserPath').innerText = path;
+            
             const res = await fetch(`${API}/browser/list?path=${encodeURIComponent(path)}`);
-            if(!res.ok) { alert("Access Denied"); return; }
+            if(!res.ok) { document.getElementById('fileList').innerHTML = "Access Denied"; return; }
             const files = await res.json();
-            document.getElementById('fileList').innerHTML = files.map(f => `<div class="file-list-item" onclick="${f.is_dir ? `loadBrowserPath('${f.path.replace(/\\/g, "\\\\")}')` : `downloadFile('${f.path.replace(/\\/g, "\\\\")}')`}"><span style="margin-right:10px">${f.is_dir ? '📁' : '📄'}</span><span style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap">${f.name}</span><span style="font-size:0.8rem; opacity:0.6">${(f.size/1024).toFixed(1)} KB</span></div>`).join('');
+            
+            document.getElementById('fileList').innerHTML = files.map(f => `
+                <div class="list-item" onclick="${f.is_dir ? `browse('${f.path.replace(/\\/g, "\\\\")}')` : `download('${f.path.replace(/\\/g, "\\\\")}')`}">
+                    <span style="display:flex; align-items:center; gap:10px;">
+                        ${f.is_dir ? '📁' : '📄'} ${f.name}
+                    </span>
+                    <span style="font-size:0.8rem; opacity:0.6">${(f.size/1024).toFixed(1)} KB</span>
+                </div>
+            `).join('');
         }
-        function browseUp() { const parts = currentPath.split('/'); parts.pop(); loadBrowserPath(parts.join('/')); }
-        function downloadFile(path) { window.location.href = `${API}/browser/download?path=${encodeURIComponent(path)}`; }
-        async function deleteSnapshot(path) { if(confirm("Delete?")) { await fetch(`${API}/snapshots/delete?path=${encodeURIComponent(path)}`); viewSnapshots(); } }
-        async function clearLogs() { if(confirm("Clear logs?")) { await fetch(`${API}/logs/clear`); loadHistory(); } }
-        async function purgeAll() { if(prompt("Type DELETE")==="DELETE") { await fetch(`${API}/action/purge_all`); loadHistory(); } }
-        
+
+        function browseUp() { const p = currentBrowserPath.split('/'); p.pop(); browse(p.join('/')); }
+        function download(path) { window.location.href = `${API}/browser/download?path=${encodeURIComponent(path)}`; }
+        async function delSnap(path) { if(confirm("Delete?")) { await fetch(`${API}/snapshots/delete?path=${encodeURIComponent(path)}`); viewSnapshots(currentJobId); } }
+        async function clearLogs() { if(confirm("Clear?")) { await fetch(`${API}/logs/clear`); loadLogs(); } }
+        async function purgeAll() { if(prompt("Type DELETE") === "DELETE") { await fetch(`${API}/action/purge_all`); loadLogs(); } }
+
+        // --- Config Logic ---
+        document.getElementById('globalForm').onsubmit = async (e) => {
+            e.preventDefault();
+            config.target_drive = document.getElementById('target_drive').value;
+            config.log_level = document.getElementById('log_level').value;
+            await saveConfig();
+        };
+
+        async function saveConfig() {
+            await fetch(`${API}/config`, { method:'POST', body: JSON.stringify(config) });
+            alert("Saved");
+            loadConfig();
+        }
+
+        // Job Editing
+        function editJob(idx) {
+            document.getElementById('jobModal').classList.add('active');
+            if(idx === 'new') {
+                document.getElementById('jobForm').reset();
+                document.getElementById('j_id').value = "new";
+            } else {
+                const j = config.jobs[idx];
+                document.getElementById('j_id').value = j.id;
+                document.getElementById('j_name').value = j.name;
+                document.getElementById('j_src').value = j.source;
+                document.getElementById('j_dest').value = j.dest;
+                // Sched
+                document.getElementById('j_sched_en').checked = j.schedule.enabled;
+                document.getElementById('j_sched_type').value = j.schedule.type;
+                document.getElementById('j_sched_val').value = j.schedule.value;
+                document.getElementById('j_sched_unit').value = j.schedule.unit;
+                // Ret
+                document.getElementById('j_ret_en').checked = j.retention.enabled;
+                document.getElementById('j_ret_mode').value = j.retention.mode;
+                document.getElementById('j_ret_val').value = j.retention.value;
+                document.getElementById('j_ret_unit').value = j.retention.unit;
+                // Advanced
+                document.getElementById('j_pre').value = j.pre_command || "";
+                document.getElementById('j_post').value = j.post_command || "";
+                document.getElementById('j_repl_en').checked = j.replication?.enabled || false;
+                document.getElementById('j_repl_dest').value = j.replication?.target_dest || "";
+            }
+        }
+
+        document.getElementById('jobForm').onsubmit = (e) => {
+            e.preventDefault();
+            const id = document.getElementById('j_id').value;
+            const job = {
+                id: id === "new" ? Date.now().toString() : id,
+                name: document.getElementById('j_name').value,
+                source: document.getElementById('j_src').value,
+                dest: document.getElementById('j_dest').value,
+                schedule: {
+                    enabled: document.getElementById('j_sched_en').checked,
+                    type: document.getElementById('j_sched_type').value,
+                    value: document.getElementById('j_sched_val').value,
+                    unit: document.getElementById('j_sched_unit').value,
+                },
+                retention: {
+                    enabled: document.getElementById('j_ret_en').checked,
+                    mode: document.getElementById('j_ret_mode').value,
+                    value: parseInt(document.getElementById('j_ret_val').value),
+                    unit: document.getElementById('j_ret_unit').value,
+                },
+                pre_command: document.getElementById('j_pre').value,
+                post_command: document.getElementById('j_post').value,
+                replication: {
+                    enabled: document.getElementById('j_repl_en').checked,
+                    target_dest: document.getElementById('j_repl_dest').value
+                }
+            };
+
+            if(id === "new") { if(!config.jobs) config.jobs=[]; config.jobs.push(job); }
+            else { const i = config.jobs.findIndex(x=>x.id===id); if(i>-1) config.jobs[i]=job; }
+            
+            saveConfig();
+            closeModal('jobModal');
+        };
+
+        function deleteJob() {
+            if(!confirm("Delete Job?")) return;
+            const id = document.getElementById('j_id').value;
+            config.jobs = config.jobs.filter(x => x.id !== id);
+            saveConfig();
+            closeModal('jobModal');
+        }
+
+        // Utils
         function closeModal(id) { document.getElementById(id).classList.remove('active'); }
-        function toggleTheme() { const t = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark'; document.documentElement.setAttribute('data-theme', t); localStorage.setItem('theme', t); }
-        if(localStorage.getItem('theme') === 'dark') toggleTheme();
-        setInterval(() => { document.getElementById('clock').innerText = new Date().toLocaleTimeString(); }, 1000);
-
-        function renderSchedInput(key, title) {
-            return `<div style="margin-bottom:10px; padding-left:5px;"><label style="display:flex; justify-content:space-between; align-items:center">${title} <input type="checkbox" id="${key}_enabled" style="width:auto;"></label><div class="btn-group" style="margin-top:5px"><select id="${key}_type" onchange="toggleSched('${key}')"><option value="every_x">Every X</option><option value="cron">Cron</option></select><input type="text" id="${key}_value" placeholder="15" style="flex:1"><select id="${key}_unit" style="width:90px"><option value="minutes">Mins</option><option value="hours">Hrs</option><option value="days">Days</option></select></div></div>`;
+        function toggleTheme() {
+            const b = document.body;
+            b.setAttribute('data-theme', b.getAttribute('data-theme')==='dark'?'light':'dark');
         }
-        document.getElementById('schedulers_container').innerHTML = renderSchedInput('snapshot_sched', '📸 Snapshot Schedule') + renderSchedInput('scrub_sched', '🧹 Scrub Schedule') + renderSchedInput('balance_sched', '⚖ Balance Schedule');
-        function toggleSched(key) { document.getElementById(`${key}_unit`).style.display = document.getElementById(`${key}_type`).value === 'cron' ? 'none' : 'block'; }
-        function toggleRetentionUI() { document.getElementById('retention_unit').style.display = document.getElementById('retention_mode').value === 'time' ? 'block' : 'none'; }
+        setInterval(() => document.getElementById('clock').innerText = new Date().toLocaleTimeString(), 1000);
 
+        // Init
         loadConfig();
         setInterval(loadDashboard, 10000);
-        loadHistory();
     </script>
 </body>
 </html>
