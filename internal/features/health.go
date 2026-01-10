@@ -15,10 +15,10 @@ func HandleStorageUsage(w http.ResponseWriter, r *http.Request) {
 	path := core.State.Config.TargetDrive
 	if path == "" { http.Error(w, "Target drive not set", 400); return }
 
+	// -b forces byte output for easy parsing
 	out, _ := exec.Command("btrfs", "filesystem", "usage", "-b", path).Output()
 	text := string(out)
 
-	// Regex for robust parsing of "Used:" in different sections
 	parse := func(regexStr string) int64 {
 		re := regexp.MustCompile(regexStr)
 		matches := re.FindStringSubmatch(text)
@@ -29,14 +29,38 @@ func HandleStorageUsage(w http.ResponseWriter, r *http.Request) {
 		return 0
 	}
 
-	// Overall section usually has the summary
+	// Parse total used for Data and Metadata
+	// Output format example: "Data,single: Size:8.00GiB, Used:6.54GiB (100.00%)" -> in bytes with -b: "Used:7025459200"
+	// We sum up all "Used" occurrences for Data and Metadata types
+	
+	var dataUsed, metaUsed int64
+	
+	scanner := bufio.NewScanner(strings.NewReader(text))
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		// Match lines starting with Data or Metadata
+		if strings.HasPrefix(line, "Data") {
+			re := regexp.MustCompile(`Used:(\d+)`)
+			if m := re.FindStringSubmatch(line); len(m) > 1 {
+				v, _ := strconv.ParseInt(m[1], 10, 64)
+				dataUsed += v
+			}
+		}
+		if strings.HasPrefix(line, "Metadata") || strings.HasPrefix(line, "System") {
+			re := regexp.MustCompile(`Used:(\d+)`)
+			if m := re.FindStringSubmatch(line); len(m) > 1 {
+				v, _ := strconv.ParseInt(m[1], 10, 64)
+				metaUsed += v
+			}
+		}
+	}
+
 	resp := map[string]int64{
 		"device_size":        parse(`Device size:\s+(\d+)`),
 		"device_allocated":   parse(`Device allocated:\s+(\d+)`),
 		"device_unallocated": parse(`Device unallocated:\s+(\d+)`),
-		// Summing up Data+Metadata used is safer than relying on summary sometimes
-		"used":               parse(`Data,.*?: Used:(\d+)`) + parse(`Metadata,.*?: Used:(\d+)`), 
-		"metadata_used":      parse(`Metadata,.*?: Used:(\d+)`),
+		"used":               dataUsed + metaUsed,
+		"metadata_used":      metaUsed,
 		"free":               parse(`Free \(estimated\):\s+(\d+)`),
 	}
 	json.NewEncoder(w).Encode(resp)
@@ -48,29 +72,38 @@ func HandleBtrfsStats(w http.ResponseWriter, r *http.Request) {
 	
 	out, _ := exec.Command("btrfs", "device", "stats", path).Output()
 	
-	// Format: [/dev/sda].write_io_errs 0
-	stats := make(map[string]map[string]string) // String to handle "OK" formatting in JS or here? Let's do raw values.
+	// Stats map: Device -> {ErrorType: Value}
+	stats := make(map[string]map[string]string) 
 	
 	scanner := bufio.NewScanner(strings.NewReader(string(out)))
 	for scanner.Scan() {
-		parts := strings.Fields(scanner.Text())
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" { continue }
+		
+		// Format: [/dev/sda].write_io_errs 0
+		parts := strings.Fields(line)
 		if len(parts) >= 2 {
-			// Fix the [ bracket issue
-			devClean := strings.ReplaceAll(parts[0], "[", "")
-			devClean = strings.ReplaceAll(devClean, "].", "") // remove trailing ].
+			rawKey := parts[0] // [/dev/sda].write_io_errs
+			valStr := parts[1] // 0
 			
-			key := parts[0]
-			if idx := strings.LastIndex(parts[0], "."); idx != -1 {
-				key = parts[0][idx+1:]
-			}
+			// Extract Device Name
+			// 1. Remove brackets [ ]
+			clean := strings.ReplaceAll(rawKey, "[", "")
+			clean = strings.ReplaceAll(clean, "]", "")
 			
-			if _, ok := stats[devClean]; !ok { stats[devClean] = make(map[string]string) }
-			
-			valInt, _ := strconv.Atoi(parts[1])
-			if valInt == 0 {
-				stats[devClean][key] = "OK"
-			} else {
-				stats[devClean][key] = parts[1] // Keep number if error
+			// 2. Split by last dot to get device and error type
+			lastDot := strings.LastIndex(clean, ".")
+			if lastDot != -1 {
+				dev := clean[:lastDot]
+				errType := clean[lastDot+1:]
+				
+				if _, ok := stats[dev]; !ok { stats[dev] = make(map[string]string) }
+				
+				if valStr == "0" {
+					stats[dev][errType] = "OK"
+				} else {
+					stats[dev][errType] = valStr
+				}
 			}
 		}
 	}
@@ -84,7 +117,10 @@ func HandleSmartData(w http.ResponseWriter, r *http.Request) {
 	dfOut, _ := exec.Command("df", path).Output()
 	lines := strings.Split(strings.TrimSpace(string(dfOut)), "\n")
 	if len(lines) < 2 { http.Error(w, "Resolve failed", 500); return }
-	device := strings.TrimRight(strings.Fields(lines[1])[0], "0123456789")
+	
+	// /dev/sda1 -> /dev/sda
+	device := strings.Fields(lines[1])[0] 
+	device = strings.TrimRight(device, "0123456789")
 
 	cmd := exec.Command("smartctl", "-a", "-j", device)
 	out, _ := cmd.CombinedOutput()
