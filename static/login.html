@@ -34,7 +34,8 @@
                     body: 'password=' + encodeURIComponent(pass)
                 });
                 if(res.ok) {
-                    window.location.href = '/';
+                    // Force a reload from the server to bypass any cached login.html
+                    window.location.href = '/?t=' + new Date().getTime(); 
                 } else {
                     err.style.display = 'block';
                     err.innerText = "Incorrect Password";
