@@ -6,25 +6,30 @@ import (
 	"time"
 )
 
-// Middleware to check cookie if PASSWORD env is set
 func AuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		pass := os.Getenv("PASSWORD")
 		if pass == "" {
-			next(w, r) // No auth required
+			next(w, r)
 			return
 		}
 
 		cookie, err := r.Cookie("session_token")
 		if err != nil || cookie.Value != "valid_session" {
-			// If API call, return 401
+			// API Calls -> 401
 			if len(r.URL.Path) >= 4 && r.URL.Path[:4] == "/api" && r.URL.Path != "/api/login" {
 				http.Error(w, "Unauthorized", 401)
 				return
 			}
-			// If HTML page, redirect to login
+			// Root or Index -> Serve Login
 			if r.URL.Path == "/" || r.URL.Path == "/index.html" {
-				http.ServeFile(w, r, "static/login.html")
+				// Use ./static/login.html explicitly. 
+				// In Docker WORKDIR is /root/ and static is copied to /root/static
+				if _, err := os.Stat("static/login.html"); err == nil {
+					http.ServeFile(w, r, "static/login.html")
+				} else {
+					http.Error(w, "Login page missing in container. Check build.", 500)
+				}
 				return
 			}
 		}
@@ -42,7 +47,6 @@ func HandleLogin(w http.ResponseWriter, r *http.Request) {
 			Name: "session_token", Value: "valid_session", 
 			Expires: time.Now().Add(24 * time.Hour), Path: "/",
 		})
-		
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(`{"success":true}`))
 	} else {

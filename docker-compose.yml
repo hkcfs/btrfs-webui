@@ -5,7 +5,7 @@ services:
     privileged: true
     environment:
       - TZ=UTC
-      # - PASSWORD=admin  # Uncomment to enable login
+      - PASSWORD=admin  # Uncomment to enable login
     volumes:
       - /:/host
       - ./data:/data
