@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login</title>
+    <style>
+        body { display:flex; justify-content:center; align-items:center; height:100vh; background:#f8fafc; font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin:0; }
+        form { background:white; padding:40px; border-radius:12px; box-shadow:0 10px 25px -5px rgba(0,0,0,0.1); width:100%; max-width:320px; border:1px solid #e2e8f0; }
+        h2 { text-align:center; margin-top:0; color:#0f172a; margin-bottom: 20px; }
+        input { width:100%; padding:12px; margin-bottom:15px; border:1px solid #cbd5e1; border-radius:6px; box-sizing:border-box; font-size:16px; transition:0.2s; outline:none; }
+        input:focus { border-color:#2563eb; ring:2px solid #2563eb; }
+        button { width:100%; padding:12px; background:#2563eb; color:white; border:none; border-radius:6px; cursor:pointer; font-weight:600; font-size:16px; transition:0.2s; }
+        button:hover { background:#1d4ed8; }
+        .error { color:#ef4444; text-align:center; margin-bottom:15px; display:none; font-size:0.9rem; background:#fee2e2; padding:8px; border-radius:4px; }
+    </style>
+</head>
+<body>
+    <form onsubmit="doLogin(event)">
+        <h2>Locked 🔒</h2>
+        <div id="error" class="error">Invalid Password</div>
+        <input type="password" id="pass" placeholder="Enter Password" required autofocus>
+        <button type="submit">Unlock Dashboard</button>
+    </form>
+    <script>
+        async function doLogin(e) {
+            e.preventDefault();
+            const pass = document.getElementById('pass').value;
+            const err = document.getElementById('error');
+            try {
+                const res = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                    body: 'password=' + encodeURIComponent(pass)
+                });
+                if(res.ok) {
+                    window.location.href = '/';
+                } else {
+                    err.style.display = 'block';
+                    err.innerText = "Incorrect Password";
+                    document.getElementById('pass').value = '';
+                }
+            } catch(e) {
+                err.innerText = "Connection Error";
+                err.style.display = 'block';
+            }
+        }
+    </script>
+</body>
+</html>
