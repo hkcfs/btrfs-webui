@@ -13,24 +13,57 @@ export function renderJobs() {
         list.innerHTML = "<p style='padding:20px; text-align:center'>No jobs configured.</p>"; return; 
     }
     
-    list.innerHTML = appConfig.jobs.map((j, i) => `
+    list.innerHTML = appConfig.jobs.map((j, i) => {
+        // Prepare display strings
+        const sched = j.schedule.enabled ? `${j.schedule.value} ${j.schedule.unit}` : 'Disabled';
+        const ret = j.retention.enabled 
+            ? `Keep ${j.retention.value} ${j.retention.mode === 'time' ? j.retention.unit : 'Snapshots'}` 
+            : 'Unlimited';
+        
+        // Trigger async stats fetch after render
+        setTimeout(() => loadJobStats(j.id), 100);
+
+        return `
         <div class="job-card">
             <div style="display:flex; justify-content:space-between; margin-bottom:10px;">
-                <h3 style="margin:0">${j.name}</h3>
+                <h3 style="margin:0">📁 ${j.name}</h3>
                 <div>
                     <button class="btn btn-sm" onclick="window.editJob(${i})">Edit</button>
                     <button class="btn btn-primary btn-sm" onclick="window.runJob('${j.id}')">Run Now</button>
                 </div>
             </div>
-            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; font-size:0.9rem; opacity:0.8;">
-                <div>Src: ${j.source}</div>
-                <div>Dest: ${j.dest}</div>
-                <div>Sched: ${j.schedule.enabled ? j.schedule.value + ' ' + j.schedule.unit : 'Off'}</div>
-                <div>Hooks: ${j.pre_command || j.post_command ? '✅' : '❌'}</div>
+            
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; font-size:0.9rem; margin-bottom:10px; opacity:0.9;">
+                <div><strong>Source:</strong> <span title="${j.source}">${j.source.length > 20 ? '...'+j.source.slice(-20) : j.source}</span></div>
+                <div><strong>Dest:</strong> <span title="${j.dest}">${j.dest.length > 20 ? '...'+j.dest.slice(-20) : j.dest}</span></div>
+                <div><strong>Schedule:</strong> ${sched}</div>
+                <div><strong>Retention:</strong> ${ret}</div>
             </div>
-            <button class="btn btn-sm" style="width:100%; margin-top:10px;" onclick="window.viewSnapshots('${j.id}')">📂 View Snapshots</button>
+
+            <!-- Stats Container -->
+            <div id="stats-${j.id}" style="background:var(--bg); border:1px solid var(--border); padding:8px; border-radius:6px; font-size:0.85rem; margin-bottom:10px; display:flex; justify-content:space-between;">
+                <span>Loading Stats...</span>
+            </div>
+
+            <button class="btn btn-sec btn-sm" style="width:100%;" onclick="window.viewSnapshots('${j.id}')">📂 View Snapshots</button>
         </div>
-    `).join('');
+    `}).join('');
+}
+
+async function loadJobStats(jobId) {
+    try {
+        const res = await fetch(`${API}/snapshots/stats?job_id=${jobId}`);
+        if(res.ok) {
+            const stats = await res.json();
+            const el = document.getElementById(`stats-${jobId}`);
+            if(el) {
+                el.innerHTML = `
+                    <span>📸 Total: <b>${stats.count}</b></span>
+                    <span>👴 Oldest: <b>${stats.oldest}</b></span>
+                `;
+            }
+        }
+    } catch(e) {}
 }
 
 export function editJob(idx) {
@@ -57,7 +90,7 @@ export function editJob(idx) {
         document.getElementById('j_ret_val').value = j.retention.value;
         document.getElementById('j_ret_unit').value = j.retention.unit;
         
-        // Advanced Hooks & Replication (RESTORED HERE)
+        // Advanced
         document.getElementById('j_pre').value = j.pre_command || "";
         document.getElementById('j_post').value = j.post_command || "";
         document.getElementById('j_repl_en').checked = j.replication?.enabled || false;
@@ -87,7 +120,6 @@ export function saveJobForm(e) {
             value: parseInt(document.getElementById('j_ret_val').value),
             unit: document.getElementById('j_ret_unit').value,
         },
-        // Capture Advanced Fields
         pre_command: document.getElementById('j_pre').value,
         post_command: document.getElementById('j_post').value,
         replication: {
@@ -176,6 +208,7 @@ export async function delSnap(path) {
     if(confirm("Delete?")) {
         await fetch(`${API}/snapshots/delete?path=${encodeURIComponent(path)}`);
         viewSnapshots(currentJobId);
+        loadJobStats(currentJobId); // Refresh stats
     }
 }
 
