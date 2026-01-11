@@ -208,4 +208,3 @@ func EnforceRetention(destPath string, cfg config.RetentionConfig) {
 		core.PrintConsole(config.LogLevelDefault, "Retention deleted %d snapshots in %s", len(toDel), destPath)
 	}
 }
-
