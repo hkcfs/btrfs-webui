@@ -20,22 +20,14 @@ var cronIDs map[string]cron.EntryID
 func main() {
 	core.LoadState()
 	
-	// Scheduler Init
 	cronRunner = cron.New()
 	cronIDs = make(map[string]cron.EntryID)
 	cronRunner.Start()
 	refreshSchedules()
 
-	// --- Routes ---
 	mux := http.NewServeMux()
-
-	// Static Files
 	mux.Handle("/", http.FileServer(http.Dir("./static")))
-
-	// Auth
 	mux.HandleFunc("/api/login", features.HandleLogin)
-
-	// API
 	mux.HandleFunc("/api/config", handleConfig)
 	mux.HandleFunc("/api/history", handleHistory)
 	mux.HandleFunc("/api/logs/clear", handleClearLogs)
@@ -44,16 +36,18 @@ func main() {
 	mux.HandleFunc("/api/storage/usage", features.HandleStorageUsage)
 	mux.HandleFunc("/api/health/smart", features.HandleSmartData)
 	mux.HandleFunc("/api/health/btrfs", features.HandleBtrfsStats)
-	// mux.HandleFunc("/api/health/test", features.HandleSmartTest) // TODO
+	mux.HandleFunc("/api/browser/list", features.HandleBrowserList)
+	mux.HandleFunc("/api/browser/download", features.HandleBrowserDownload)
 	
 	// Snapshots & Actions
+	mux.HandleFunc("/api/snapshots/list", features.HandleListSnapshots)
+	mux.HandleFunc("/api/snapshots/stats", features.HandleJobStats) // NEW: Stats
+	mux.HandleFunc("/api/snapshots/delete", features.HandleDeleteSnapshot)
 	mux.HandleFunc("/api/snapshots/diff", features.HandleSnapshotDiff)
 	mux.HandleFunc("/api/snapshots/rollback", features.HandleRollback)
 	
-	// Generic Action Handler wrapper
 	mux.HandleFunc("/api/action/", handleGenericAction)
 
-	// Apply Middleware
 	handler := features.AuthMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		mux.ServeHTTP(w, r)
 	})
@@ -64,7 +58,9 @@ func main() {
 	log.Fatal(http.ListenAndServe(":"+port, handler))
 }
 
-// --- Local Handlers (Glue code) ---
+// ... (Rest of local handlers handleConfig, handleHistory, handleClearLogs, handleGenericAction, refreshSchedules REMAIN THE SAME as previous step)
+// Re-paste them from previous if needed, or assume they are there.
+// For safety, I include handleGenericAction and refreshSchedules below so you have a complete file if you copy-paste.
 
 func handleConfig(w http.ResponseWriter, r *http.Request) {
 	core.State.Mu.Lock()
@@ -96,8 +92,7 @@ func handleClearLogs(w http.ResponseWriter, r *http.Request) {
 
 func handleGenericAction(w http.ResponseWriter, r *http.Request) {
 	actionType := strings.TrimPrefix(r.URL.Path, "/api/action/")
-	queryAction := r.URL.Query().Get("action") // start, stop, etc
-	
+	queryAction := r.URL.Query().Get("action")
 	var id int64 = 0
 
 	switch actionType {
@@ -140,48 +135,40 @@ func handleGenericAction(w http.ResponseWriter, r *http.Request) {
 		path := core.State.Config.TargetDrive
 		id = core.RunCommandAsync("COMPSIZE", "📊", path, "compsize", path)
 	case "purge_all":
-		// Trigger purge for all jobs
 		go func() {
 			core.State.Mu.Lock()
 			jobs := core.State.Config.Jobs
 			core.State.Mu.Unlock()
 			for _, job := range jobs {
-				features.EnforceRetention(job.Dest, config.RetentionConfig{Enabled: true, Mode: "count", Value: 0}) // effectively delete all if 0, or custom logic needed for pure purge
+				features.EnforceRetention(job.Dest, config.RetentionConfig{Enabled: true, Mode: "count", Value: 0})
 			}
 			core.RunCommandAsync("PURGE", "🔥", "ALL", "echo", "Purge triggered")
 		}()
 		id = 1
 	}
-	
 	json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "id": id})
 }
 
 func refreshSchedules() {
 	core.State.Mu.Lock()
 	defer core.State.Mu.Unlock()
-	
-	// Clear old
 	for _, id := range cronIDs { cronRunner.Remove(id) }
 	cronIDs = make(map[string]cron.EntryID)
 
-	// Helper
 	schedule := func(name, spec string, job func()) {
 		id, err := cronRunner.AddFunc(spec, job)
 		if err == nil { cronIDs[name] = id; core.PrintConsole("DEFAULT", "Scheduled %s: %s", name, spec) }
 	}
 
-	// Jobs
 	for _, job := range core.State.Config.Jobs {
 		if job.Schedule.Enabled {
 			spec := job.Schedule.Value 
-			// Simple parser for every_x
 			if job.Schedule.Type == "every_x" { 
 				unit := "m"
 				if job.Schedule.Unit == "hours" { unit = "h" }
-				if job.Schedule.Unit == "days" { unit = "d" } // robfig cron supports @every 1d
+				if job.Schedule.Unit == "days" { unit = "d" }
 				spec = "@every " + job.Schedule.Value + unit
 			}
-			
 			j := job
 			schedule("job_"+j.ID, spec, func() { go features.PerformBackupJob(j) })
 		}

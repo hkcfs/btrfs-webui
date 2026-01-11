@@ -14,9 +14,112 @@ import (
 	"time"
 )
 
-const TimeLayout = "02-01-2006-15-04-MST"
+// Supported Time Formats
+var TimeLayouts = []string{
+	"02-01-2006-15-04-MST", // Current default
+	"2006-01-02-15-04-MST", // ISO-like
+	time.RFC3339,
+}
 
-// --- Diff Feature ---
+// --- Snapshot Listing (FIXED) ---
+func HandleListSnapshots(w http.ResponseWriter, r *http.Request) {
+	jobID := r.URL.Query().Get("job_id")
+	var dest string
+	core.State.Mu.Lock()
+	for _, j := range core.State.Config.Jobs {
+		if j.ID == jobID { dest = j.Dest; break }
+	}
+	core.State.Mu.Unlock()
+
+	if dest == "" { http.Error(w, "Job not found", 404); return }
+
+	// DEBUG LOGGING
+	core.PrintConsole("DEBUG", "Listing snapshots in: %s", dest)
+	entries, err := os.ReadDir(dest)
+	if err != nil { 
+		core.PrintConsole("ERROR", "ReadDir failed: %v", err)
+		http.Error(w, err.Error(), 500)
+		return 
+	}
+	core.PrintConsole("DEBUG", "Found %d entries", len(entries))
+
+	type SnapshotItem struct {
+		Name    string    `json:"name"`
+		Date    string    `json:"date"`
+		SortKey time.Time `json:"-"`
+		Path    string    `json:"path"`
+	}
+	var list []SnapshotItem
+	
+	for _, e := range entries {
+		if e.IsDir() {
+			t := parseSnapshotTime(e)
+			list = append(list, SnapshotItem{
+				Name:    e.Name(),
+				Date:    t.Format("Jan 02, 2006 15:04 MST"),
+				SortKey: t,
+				Path:    filepath.Join(dest, e.Name()),
+			})
+		}
+	}
+	
+	// Sort Newest First
+	sort.Slice(list, func(i, j int) bool { return list[i].SortKey.After(list[j].SortKey) })
+	json.NewEncoder(w).Encode(list)
+}
+
+// --- New: Stats for Job Card ---
+func HandleJobStats(w http.ResponseWriter, r *http.Request) {
+	jobID := r.URL.Query().Get("job_id")
+	var dest string
+	core.State.Mu.Lock()
+	for _, j := range core.State.Config.Jobs {
+		if j.ID == jobID { dest = j.Dest; break }
+	}
+	core.State.Mu.Unlock()
+
+	if dest == "" { http.Error(w, "Job not found", 404); return }
+
+	entries, _ := os.ReadDir(dest)
+	var oldest time.Time
+	var count int
+	first := true
+
+	for _, e := range entries {
+		if e.IsDir() {
+			t := parseSnapshotTime(e)
+			if first || t.Before(oldest) {
+				oldest = t
+				first = false
+			}
+			count++
+		}
+	}
+
+	oldestStr := "None"
+	if count > 0 {
+		oldestStr = oldest.Format("Jan 02, 2006")
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"count": count,
+		"oldest": oldestStr,
+	})
+}
+
+// Helper to try multiple time formats or fallback to ModTime
+func parseSnapshotTime(e os.DirEntry) time.Time {
+	for _, layout := range TimeLayouts {
+		if t, err := time.Parse(layout, e.Name()); err == nil {
+			return t
+		}
+	}
+	// Fallback to File Info
+	info, _ := e.Info()
+	return info.ModTime()
+}
+
+// --- Diff & Rollback ---
 func HandleSnapshotDiff(w http.ResponseWriter, r *http.Request) {
 	snapA := r.URL.Query().Get("a")
 	snapB := r.URL.Query().Get("b")
@@ -36,7 +139,6 @@ func HandleSnapshotDiff(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{"id": id})
 }
 
-// --- Rollback Feature ---
 func HandleRollback(w http.ResponseWriter, r *http.Request) {
 	snapPath := r.URL.Query().Get("path")
 	jobID := r.URL.Query().Get("job_id")
@@ -62,55 +164,6 @@ func HandleRollback(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"status": "triggered"})
 }
 
-// --- Snapshot Listing (FIXED) ---
-func HandleListSnapshots(w http.ResponseWriter, r *http.Request) {
-	jobID := r.URL.Query().Get("job_id")
-	var dest string
-	core.State.Mu.Lock()
-	for _, j := range core.State.Config.Jobs {
-		if j.ID == jobID { dest = j.Dest; break }
-	}
-	core.State.Mu.Unlock()
-
-	if dest == "" { http.Error(w, "Job not found", 404); return }
-
-	entries, err := os.ReadDir(dest)
-	if err != nil { http.Error(w, err.Error(), 500); return }
-
-	type SnapshotItem struct {
-		Name    string    `json:"name"`
-		Date    string    `json:"date"`
-		SortKey time.Time `json:"-"`
-		Path    string    `json:"path"`
-	}
-	var list []SnapshotItem
-	
-	for _, e := range entries {
-		if e.IsDir() {
-			// Try to parse the specific format
-			t, err := time.Parse(TimeLayout, e.Name())
-			
-			// If parsing fails (wrong format or weird timezone), use file modification time
-			// This ensures the snapshot STILL shows up in the list
-			if err != nil { 
-				info, _ := e.Info()
-				t = info.ModTime()
-			}
-			
-			list = append(list, SnapshotItem{
-				Name:    e.Name(),
-				Date:    t.Format("Jan 02, 2006 15:04 MST"),
-				SortKey: t,
-				Path:    filepath.Join(dest, e.Name()),
-			})
-		}
-	}
-	
-	// Sort Newest First
-	sort.Slice(list, func(i, j int) bool { return list[i].SortKey.After(list[j].SortKey) })
-	json.NewEncoder(w).Encode(list)
-}
-
 func HandleDeleteSnapshot(w http.ResponseWriter, r *http.Request) {
 	path := r.URL.Query().Get("path")
 	if path == "" { http.Error(w, "Path required", 400); return }
@@ -134,7 +187,8 @@ func HandleDeleteSnapshot(w http.ResponseWriter, r *http.Request) {
 func PerformBackupJob(job config.BackupJob) {
 	os.MkdirAll(job.Dest, 0755)
 	now := time.Now()
-	name := now.Format(TimeLayout)
+	// Use the first format in the list as default for creation
+	name := now.Format(TimeLayouts[0])
 	fullDest := filepath.Join(job.Dest, name)
 	
 	core.PrintConsole(config.LogLevelDefault, "Starting Job: %s", job.Name)
@@ -177,9 +231,8 @@ func EnforceRetention(destPath string, cfg config.RetentionConfig) {
 	type Snap struct { Name string; Time time.Time }
 	var snaps []Snap
 	for _, e := range entries {
-		if t, err := time.Parse(TimeLayout, e.Name()); err == nil {
-			snaps = append(snaps, Snap{Name: e.Name(), Time: t})
-		}
+		t := parseSnapshotTime(e)
+		snaps = append(snaps, Snap{Name: e.Name(), Time: t})
 	}
 	sort.Slice(snaps, func(i, j int) bool { return snaps[i].Time.After(snaps[j].Time) })
 
