@@ -4,7 +4,6 @@ import (
 	"btrfs-commander/internal/core"
 	"bufio"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"os/exec"
 	"regexp"
@@ -115,7 +114,6 @@ func HandleSmartData(w http.ResponseWriter, r *http.Request) {
 
 	cmd := exec.Command("smartctl", "-a", "-j", device)
 	out, _ := cmd.CombinedOutput()
-	// write raw bytes since smartctl returns json
 	w.Write(out)
 }
 
