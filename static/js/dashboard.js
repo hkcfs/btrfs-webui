@@ -23,7 +23,7 @@ export async function loadDashboard() {
         document.getElementById('barUsed').style.width = pUsed + "%";
         document.getElementById('barMeta').style.width = pMeta + "%";
         document.getElementById('barFree').style.width = pFree + "%";
-    } catch(e) { console.error(e); }
+    } catch(e) {}
 
     // BTRFS Stats
     try {
@@ -65,5 +65,12 @@ export async function doAction(type, action, output=false) {
 }
 
 export function runSmart(type) {
-    fetch(`${API}/health/test?type=${type}`).then(r=>r.json()).then(d=>pollLog(d.id));
+    if(!confirm("Start SMART " + type + " test?")) return;
+    fetch(`${API}/health/test?type=${type}`)
+        .then(r => r.json())
+        .then(d => {
+            if(d.id) pollLog(d.id);
+            else alert("Failed to trigger test");
+        })
+        .catch(e => alert("Error: " + e));
 }

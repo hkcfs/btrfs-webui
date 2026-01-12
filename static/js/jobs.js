@@ -14,13 +14,11 @@ export function renderJobs() {
     }
     
     list.innerHTML = appConfig.jobs.map((j, i) => {
-        // Prepare display strings
         const sched = j.schedule.enabled ? `${j.schedule.value} ${j.schedule.unit}` : 'Disabled';
         const ret = j.retention.enabled 
             ? `Keep ${j.retention.value} ${j.retention.mode === 'time' ? j.retention.unit : 'Snapshots'}` 
             : 'Unlimited';
         
-        // Trigger async stats fetch after render
         setTimeout(() => loadJobStats(j.id), 100);
 
         return `
@@ -40,7 +38,6 @@ export function renderJobs() {
                 <div><strong>Retention:</strong> ${ret}</div>
             </div>
 
-            <!-- Stats Container -->
             <div id="stats-${j.id}" style="background:var(--bg); border:1px solid var(--border); padding:8px; border-radius:6px; font-size:0.85rem; margin-bottom:10px; display:flex; justify-content:space-between;">
                 <span>Loading Stats...</span>
             </div>
@@ -57,10 +54,7 @@ async function loadJobStats(jobId) {
             const stats = await res.json();
             const el = document.getElementById(`stats-${jobId}`);
             if(el) {
-                el.innerHTML = `
-                    <span>📸 Total: <b>${stats.count}</b></span>
-                    <span>👴 Oldest: <b>${stats.oldest}</b></span>
-                `;
+                el.innerHTML = `<span>📸 Total: <b>${stats.count}</b></span><span>👴 Oldest: <b>${stats.oldest}</b></span>`;
             }
         }
     } catch(e) {}
@@ -77,25 +71,18 @@ export function editJob(idx) {
         document.getElementById('j_name').value = j.name;
         document.getElementById('j_src').value = j.source;
         document.getElementById('j_dest').value = j.dest;
-        
-        // Schedule
         document.getElementById('j_sched_en').checked = j.schedule.enabled;
         document.getElementById('j_sched_type').value = j.schedule.type;
         document.getElementById('j_sched_val').value = j.schedule.value;
         document.getElementById('j_sched_unit').value = j.schedule.unit;
-        
-        // Retention
         document.getElementById('j_ret_en').checked = j.retention.enabled;
         document.getElementById('j_ret_mode').value = j.retention.mode;
         document.getElementById('j_ret_val').value = j.retention.value;
         document.getElementById('j_ret_unit').value = j.retention.unit;
-        
-        // Advanced
         document.getElementById('j_pre').value = j.pre_command || "";
         document.getElementById('j_post').value = j.post_command || "";
         document.getElementById('j_repl_en').checked = j.replication?.enabled || false;
         document.getElementById('j_repl_dest').value = j.replication?.target_dest || "";
-        
         toggleJobRetentionUI();
     }
 }
@@ -108,56 +95,29 @@ export function saveJobForm(e) {
         name: document.getElementById('j_name').value,
         source: document.getElementById('j_src').value,
         dest: document.getElementById('j_dest').value,
-        schedule: {
-            enabled: document.getElementById('j_sched_en').checked,
-            type: document.getElementById('j_sched_type').value,
-            value: document.getElementById('j_sched_val').value,
-            unit: document.getElementById('j_sched_unit').value,
-        },
-        retention: {
-            enabled: document.getElementById('j_ret_en').checked,
-            mode: document.getElementById('j_ret_mode').value,
-            value: parseInt(document.getElementById('j_ret_val').value),
-            unit: document.getElementById('j_ret_unit').value,
-        },
+        schedule: { enabled: document.getElementById('j_sched_en').checked, type: document.getElementById('j_sched_type').value, value: document.getElementById('j_sched_val').value, unit: document.getElementById('j_sched_unit').value },
+        retention: { enabled: document.getElementById('j_ret_en').checked, mode: document.getElementById('j_ret_mode').value, value: parseInt(document.getElementById('j_ret_val').value), unit: document.getElementById('j_ret_unit').value },
         pre_command: document.getElementById('j_pre').value,
         post_command: document.getElementById('j_post').value,
-        replication: {
-            enabled: document.getElementById('j_repl_en').checked,
-            target_dest: document.getElementById('j_repl_dest').value
-        }
+        replication: { enabled: document.getElementById('j_repl_en').checked, target_dest: document.getElementById('j_repl_dest').value }
     };
-
-    if(id === "new") { 
-        if(!appConfig.jobs) appConfig.jobs = [];
-        appConfig.jobs.push(job); 
-    } else { 
-        const i = appConfig.jobs.findIndex(x=>x.id===id); 
-        if(i>-1) appConfig.jobs[i]=job; 
-    }
-    
-    saveConfig();
-    closeModal('jobModal');
+    if(id === "new") { if(!appConfig.jobs) appConfig.jobs = []; appConfig.jobs.push(job); } 
+    else { const i = appConfig.jobs.findIndex(x=>x.id===id); if(i>-1) appConfig.jobs[i]=job; }
+    saveConfig(); closeModal('jobModal');
 }
 
 export function deleteJob() {
     if(!confirm("Delete Job?")) return;
     const id = document.getElementById('j_id').value;
     appConfig.jobs = appConfig.jobs.filter(x => x.id !== id);
-    saveConfig();
-    closeModal('jobModal');
+    saveConfig(); closeModal('jobModal');
 }
 
 export function toggleJobRetentionUI() {
     const isTime = document.getElementById('j_ret_mode').value === 'time';
     const el = document.getElementById('j_ret_unit');
-    if(isTime) {
-        el.classList.remove('disabled-input');
-        el.disabled = false;
-    } else {
-        el.classList.add('disabled-input');
-        el.disabled = true;
-    }
+    if(isTime) { el.classList.remove('disabled-input'); el.disabled = false; } 
+    else { el.classList.add('disabled-input'); el.disabled = true; }
 }
 
 export async function runJob(id) {
@@ -167,20 +127,19 @@ export async function runJob(id) {
 }
 
 export async function viewSnapshots(jobId) {
-    currentJobId = jobId;
-    selectedSnaps = [];
+    currentJobId = jobId; selectedSnaps = [];
     openModal('snapListModal');
     
     const res = await fetch(`${API}/snapshots/list?job_id=${jobId}`);
     const list = await res.json();
     
     document.getElementById('snapListContainer').innerHTML = list.length ? list.map(s => `
-        <div class="list-item">
-            <div style="display:flex; align-items:center; gap:10px;">
+        <div class="list-item" style="padding: 8px 10px;">
+            <div style="display:flex; align-items:center; gap:10px; flex:1; overflow:hidden;">
                 <input type="checkbox" onchange="window.selectSnap(this, '${s.path}')">
-                <div>
-                    <div style="font-weight:bold; font-family:monospace">${s.name}</div>
-                    <div style="font-size:0.8rem; opacity:0.6">${s.date}</div>
+                <div style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+                    <span style="font-weight:600; font-size:0.95rem; margin-right:8px;">${s.date}</span>
+                    <span style="font-family:monospace; font-size:0.75rem; opacity:0.5;">${s.name}</span>
                 </div>
             </div>
             <div style="display:flex; gap:5px;">
@@ -192,37 +151,12 @@ export async function viewSnapshots(jobId) {
     `).join('') : "No snapshots found.";
 }
 
-export function selectSnap(cb, path) {
-    if(cb.checked) selectedSnaps.push(path);
-    else selectedSnaps = selectedSnaps.filter(p => p !== path);
-}
-
+export function selectSnap(cb, path) { if(cb.checked) selectedSnaps.push(path); else selectedSnaps = selectedSnaps.filter(p => p !== path); }
 export async function compareSnapshots() {
     if(selectedSnaps.length !== 2) { alert("Select exactly 2 snapshots."); return; }
     const res = await fetch(`${API}/snapshots/diff?a=${encodeURIComponent(selectedSnaps[0])}&b=${encodeURIComponent(selectedSnaps[1])}`);
-    const data = await res.json();
-    pollLog(data.id);
+    pollLog((await res.json()).id);
 }
-
-export async function delSnap(path) {
-    if(confirm("Delete?")) {
-        await fetch(`${API}/snapshots/delete?path=${encodeURIComponent(path)}`);
-        viewSnapshots(currentJobId);
-        loadJobStats(currentJobId); // Refresh stats
-    }
-}
-
-export async function rollback(path) {
-    if(confirm("Overwrite live data with this snapshot?")) {
-        await fetch(`${API}/snapshots/rollback?job_id=${currentJobId}&path=${encodeURIComponent(path)}`);
-        alert("Rollback triggered check logs");
-        loadLogs();
-    }
-}
-
-export async function purgeAll() {
-    if(prompt("Type DELETE") === "DELETE") {
-        await fetch(`${API}/action/purge_all`);
-        loadLogs();
-    }
-}
+export async function delSnap(path) { if(confirm("Delete?")) { await fetch(`${API}/snapshots/delete?path=${encodeURIComponent(path)}`); viewSnapshots(currentJobId); loadJobStats(currentJobId); } }
+export async function rollback(path) { if(confirm("Overwrite live data?")) { await fetch(`${API}/snapshots/rollback?job_id=${currentJobId}&path=${encodeURIComponent(path)}`); alert("Rollback triggered"); loadLogs(); } }
+export async function purgeAll() { if(prompt("Type DELETE") === "DELETE") { await fetch(`${API}/action/purge_all`); loadLogs(); } }

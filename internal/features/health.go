@@ -15,7 +15,6 @@ func HandleStorageUsage(w http.ResponseWriter, r *http.Request) {
 	path := core.State.Config.TargetDrive
 	if path == "" { http.Error(w, "Target drive not set", 400); return }
 
-	// -b forces byte output for easy parsing
 	out, _ := exec.Command("btrfs", "filesystem", "usage", "-b", path).Output()
 	text := string(out)
 
@@ -29,16 +28,10 @@ func HandleStorageUsage(w http.ResponseWriter, r *http.Request) {
 		return 0
 	}
 
-	// Parse total used for Data and Metadata
-	// Output format example: "Data,single: Size:8.00GiB, Used:6.54GiB (100.00%)" -> in bytes with -b: "Used:7025459200"
-	// We sum up all "Used" occurrences for Data and Metadata types
-	
 	var dataUsed, metaUsed int64
-	
 	scanner := bufio.NewScanner(strings.NewReader(text))
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
-		// Match lines starting with Data or Metadata
 		if strings.HasPrefix(line, "Data") {
 			re := regexp.MustCompile(`Used:(\d+)`)
 			if m := re.FindStringSubmatch(line); len(m) > 1 {
@@ -71,39 +64,25 @@ func HandleBtrfsStats(w http.ResponseWriter, r *http.Request) {
 	if path == "" { http.Error(w, "Target drive not set", 400); return }
 	
 	out, _ := exec.Command("btrfs", "device", "stats", path).Output()
-	
-	// Stats map: Device -> {ErrorType: Value}
 	stats := make(map[string]map[string]string) 
 	
 	scanner := bufio.NewScanner(strings.NewReader(string(out)))
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 		if line == "" { continue }
-		
-		// Format: [/dev/sda].write_io_errs 0
 		parts := strings.Fields(line)
 		if len(parts) >= 2 {
-			rawKey := parts[0] // [/dev/sda].write_io_errs
-			valStr := parts[1] // 0
+			rawKey := parts[0]
+			valStr := parts[1]
 			
-			// Extract Device Name
-			// 1. Remove brackets [ ]
 			clean := strings.ReplaceAll(rawKey, "[", "")
 			clean = strings.ReplaceAll(clean, "]", "")
-			
-			// 2. Split by last dot to get device and error type
 			lastDot := strings.LastIndex(clean, ".")
 			if lastDot != -1 {
 				dev := clean[:lastDot]
 				errType := clean[lastDot+1:]
-				
 				if _, ok := stats[dev]; !ok { stats[dev] = make(map[string]string) }
-				
-				if valStr == "0" {
-					stats[dev][errType] = "OK"
-				} else {
-					stats[dev][errType] = valStr
-				}
+				if valStr == "0" { stats[dev][errType] = "OK" } else { stats[dev][errType] = valStr }
 			}
 		}
 	}
@@ -111,19 +90,51 @@ func HandleBtrfsStats(w http.ResponseWriter, r *http.Request) {
 }
 
 func HandleSmartData(w http.ResponseWriter, r *http.Request) {
-	path := core.State.Config.TargetDrive
-	if path == "" { http.Error(w, "Target", 400); return }
-	
-	dfOut, _ := exec.Command("df", path).Output()
-	lines := strings.Split(strings.TrimSpace(string(dfOut)), "\n")
-	if len(lines) < 2 { http.Error(w, "Resolve failed", 500); return }
-	
-	// /dev/sda1 -> /dev/sda
-	device := strings.Fields(lines[1])[0] 
-	device = strings.TrimRight(device, "0123456789")
+	device := resolveDevice(core.State.Config.TargetDrive)
+	if device == "" { http.Error(w, "Could not resolve device", 500); return }
 
 	cmd := exec.Command("smartctl", "-a", "-j", device)
 	out, _ := cmd.CombinedOutput()
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(out)
+}
+
+func HandleSmartTest(w http.ResponseWriter, r *http.Request) {
+	testType := r.URL.Query().Get("type")
+	path := core.State.Config.TargetDrive
+	
+	device := resolveDevice(path)
+	if device == "" {
+		core.PrintConsole("ERROR", "SMART: Could not resolve device for path %s", path)
+		http.Error(w, "Could not find device for path", 500)
+		return
+	}
+
+	core.PrintConsole("SMART", "Starting %s test on %s", testType, device)
+	id := core.RunCommandAsync("SMART TEST", "🩺", device, "smartctl", "-t", testType, device)
+	json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "id": id})
+}
+
+// Helper to find /dev/sda from /host/mnt/data
+func resolveDevice(path string) string {
+	if path == "" { return "" }
+	// Try df to get the mounted device
+	out, err := exec.Command("df", path).Output()
+	if err != nil { return "" }
+	
+	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+	if len(lines) < 2 { return "" }
+	
+	// e.g. /dev/sda1
+	fullDev := strings.Fields(lines[1])[0]
+	
+	// Strip numbers to get base device for smartctl (usually safer)
+	// /dev/sda1 -> /dev/sda
+	// /dev/nvme0n1p1 -> /dev/nvme0n1
+	baseDev := strings.TrimRight(fullDev, "0123456789")
+	
+	// If the result is just "/dev/", something went wrong, stick to original
+	if baseDev == "/dev/" { return fullDev }
+	
+	return baseDev
 }
