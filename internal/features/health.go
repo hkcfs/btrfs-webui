@@ -4,6 +4,7 @@ import (
 	"btrfs-commander/internal/core"
 	"bufio"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os/exec"
 	"regexp"
@@ -12,8 +13,12 @@ import (
 )
 
 func HandleStorageUsage(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
 	path := core.State.Config.TargetDrive
-	if path == "" { http.Error(w, "Target drive not set", 400); return }
+	if path == "" { 
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "Target drive not set"})
+		return 
+	}
 
 	out, _ := exec.Command("btrfs", "filesystem", "usage", "-b", path).Output()
 	text := string(out)
@@ -60,8 +65,12 @@ func HandleStorageUsage(w http.ResponseWriter, r *http.Request) {
 }
 
 func HandleBtrfsStats(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
 	path := core.State.Config.TargetDrive
-	if path == "" { http.Error(w, "Target drive not set", 400); return }
+	if path == "" { 
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "Target drive not set"})
+		return 
+	}
 	
 	out, _ := exec.Command("btrfs", "device", "stats", path).Output()
 	stats := make(map[string]map[string]string) 
@@ -70,6 +79,7 @@ func HandleBtrfsStats(w http.ResponseWriter, r *http.Request) {
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 		if line == "" { continue }
+		
 		parts := strings.Fields(line)
 		if len(parts) >= 2 {
 			rawKey := parts[0]
@@ -81,8 +91,14 @@ func HandleBtrfsStats(w http.ResponseWriter, r *http.Request) {
 			if lastDot != -1 {
 				dev := clean[:lastDot]
 				errType := clean[lastDot+1:]
+				
 				if _, ok := stats[dev]; !ok { stats[dev] = make(map[string]string) }
-				if valStr == "0" { stats[dev][errType] = "OK" } else { stats[dev][errType] = valStr }
+				
+				if valStr == "0" {
+					stats[dev][errType] = "OK"
+				} else {
+					stats[dev][errType] = valStr
+				}
 			}
 		}
 	}
@@ -90,51 +106,49 @@ func HandleBtrfsStats(w http.ResponseWriter, r *http.Request) {
 }
 
 func HandleSmartData(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
 	device := resolveDevice(core.State.Config.TargetDrive)
-	if device == "" { http.Error(w, "Could not resolve device", 500); return }
+	if device == "" { 
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "Could not resolve device"})
+		return 
+	}
 
 	cmd := exec.Command("smartctl", "-a", "-j", device)
 	out, _ := cmd.CombinedOutput()
-	w.Header().Set("Content-Type", "application/json")
+	// write raw bytes since smartctl returns json
 	w.Write(out)
 }
 
 func HandleSmartTest(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
 	testType := r.URL.Query().Get("type")
 	path := core.State.Config.TargetDrive
 	
 	device := resolveDevice(path)
 	if device == "" {
 		core.PrintConsole("ERROR", "SMART: Could not resolve device for path %s", path)
-		http.Error(w, "Could not find device for path", 500)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "Could not resolve device"})
 		return
 	}
 
 	core.PrintConsole("SMART", "Starting %s test on %s", testType, device)
 	id := core.RunCommandAsync("SMART TEST", "🩺", device, "smartctl", "-t", testType, device)
+	
 	json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "id": id})
 }
 
 // Helper to find /dev/sda from /host/mnt/data
 func resolveDevice(path string) string {
 	if path == "" { return "" }
-	// Try df to get the mounted device
 	out, err := exec.Command("df", path).Output()
 	if err != nil { return "" }
 	
 	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
 	if len(lines) < 2 { return "" }
 	
-	// e.g. /dev/sda1
 	fullDev := strings.Fields(lines[1])[0]
-	
-	// Strip numbers to get base device for smartctl (usually safer)
-	// /dev/sda1 -> /dev/sda
-	// /dev/nvme0n1p1 -> /dev/nvme0n1
+	// Strip numbers to get base device /dev/sda1 -> /dev/sda
 	baseDev := strings.TrimRight(fullDev, "0123456789")
-	
-	// If the result is just "/dev/", something went wrong, stick to original
 	if baseDev == "/dev/" { return fullDev }
-	
 	return baseDev
 }
