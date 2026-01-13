@@ -38,7 +38,6 @@ export function renderJobs() {
                 <div><span style="opacity:0.6">Retain:</span> ${ret}</div>
             </div>
 
-            <!-- Stats Container -->
             <div id="stats-${j.id}" style="background:var(--bg); border:1px solid var(--border); padding:8px 12px; border-radius:6px; font-size:0.85rem; margin-bottom:12px; display:flex; justify-content:space-between; align-items:center;">
                 <span style="opacity:0.6">Loading Stats...</span>
             </div>
@@ -109,58 +108,33 @@ export function saveJobForm(e) {
         name: document.getElementById('j_name').value,
         source: document.getElementById('j_src').value,
         dest: document.getElementById('j_dest').value,
-        schedule: {
-            enabled: document.getElementById('j_sched_en').checked,
-            type: document.getElementById('j_sched_type').value,
-            value: document.getElementById('j_sched_val').value,
-            unit: document.getElementById('j_sched_unit').value,
-        },
-        retention: {
-            enabled: document.getElementById('j_ret_en').checked,
-            mode: document.getElementById('j_ret_mode').value,
-            value: parseInt(document.getElementById('j_ret_val').value),
-            unit: document.getElementById('j_ret_unit').value,
-        },
+        schedule: { enabled: document.getElementById('j_sched_en').checked, type: document.getElementById('j_sched_type').value, value: document.getElementById('j_sched_val').value, unit: document.getElementById('j_sched_unit').value },
+        retention: { enabled: document.getElementById('j_ret_en').checked, mode: document.getElementById('j_ret_mode').value, value: parseInt(document.getElementById('j_ret_val').value), unit: document.getElementById('j_ret_unit').value },
         pre_command: document.getElementById('j_pre').value,
         post_command: document.getElementById('j_post').value,
-        replication: {
-            enabled: document.getElementById('j_repl_en').checked,
-            target_dest: document.getElementById('j_repl_dest').value
-        }
+        replication: { enabled: document.getElementById('j_repl_en').checked, target_dest: document.getElementById('j_repl_dest').value }
     };
-
     if(id === "new") { 
-        if(!appConfig.jobs) appConfig.jobs = [];
-        appConfig.jobs.push(job); 
+        if(!appConfig.jobs) appConfig.jobs = []; appConfig.jobs.push(job); 
     } else { 
         const i = appConfig.jobs.findIndex(x=>x.id===id); 
         if(i>-1) appConfig.jobs[i]=job; 
     }
-    
-    saveConfig();
-    closeModal('jobModal');
+    saveConfig(); closeModal('jobModal');
 }
 
 export function deleteJob() {
     if(!confirm("Delete Job?")) return;
     const id = document.getElementById('j_id').value;
     appConfig.jobs = appConfig.jobs.filter(x => x.id !== id);
-    saveConfig();
-    closeModal('jobModal');
+    saveConfig(); closeModal('jobModal');
 }
 
 export function toggleJobRetentionUI() {
     const isTime = document.getElementById('j_ret_mode').value === 'time';
     const el = document.getElementById('j_ret_unit');
-    if(isTime) {
-        el.classList.remove('disabled-input');
-        el.disabled = false;
-        el.style.opacity = "1";
-    } else {
-        el.classList.add('disabled-input');
-        el.disabled = true;
-        el.style.opacity = "0.3";
-    }
+    if(isTime) { el.classList.remove('disabled-input'); el.disabled = false; el.style.opacity = "1"; } 
+    else { el.classList.add('disabled-input'); el.disabled = true; el.style.opacity = "0.3"; }
 }
 
 export async function runJob(id) {
@@ -170,8 +144,7 @@ export async function runJob(id) {
 }
 
 export async function viewSnapshots(jobId) {
-    currentJobId = jobId;
-    selectedSnaps = [];
+    currentJobId = jobId; selectedSnaps = [];
     openModal('snapListModal');
     
     document.getElementById('snapListContainer').innerHTML = "<div style='padding:20px;text-align:center'>Loading...</div>";
@@ -179,69 +152,52 @@ export async function viewSnapshots(jobId) {
     const res = await fetch(`${API}/snapshots/list?job_id=${jobId}`);
     const list = await res.json();
     
-    // New Clean Layout
-    document.getElementById('snapListContainer').innerHTML = list.length ? list.map(s => `
-        <div style="
-            display: grid; 
-            grid-template-columns: 20px 1fr auto; 
-            gap: 15px; 
-            align-items: center; 
-            padding: 12px; 
-            border-bottom: 1px solid var(--border);
-            transition: background 0.2s;
-        " onmouseover="this.style.background='var(--bg)'" onmouseout="this.style.background='transparent'">
-            
-            <input type="checkbox" style="width:18px; height:18px; cursor:pointer;" onchange="window.selectSnap(this, '${s.path}')">
-            
-            <div style="overflow: hidden;">
-                <div style="font-weight: 600; font-size: 0.95rem; color: var(--text);">${s.date}</div>
-                <div style="font-family: monospace; font-size: 0.8rem; opacity: 0.5; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-                    ${s.name}
-                </div>
-            </div>
-            
-            <div style="display: flex; gap: 8px;">
-                <button class="btn btn-sm" onclick="window.rollback('${s.path}')" title="Restore this version">♻️</button>
-                <button class="btn btn-sm" onclick="window.browse('${s.path}')" title="Browse Files">📂</button>
-                <button class="btn btn-danger btn-sm" onclick="window.delSnap('${s.path}')" title="Delete">🗑</button>
-            </div>
-        </div>
-    `).join('') : "<div style='padding:20px;text-align:center'>No snapshots found.</div>";
+    // NEW TABLE LAYOUT
+    if(list.length === 0) {
+        document.getElementById('snapListContainer').innerHTML = "<div style='padding:20px;text-align:center'>No snapshots found.</div>";
+        return;
+    }
+
+    const rows = list.map(s => `
+        <tr class="snap-row">
+            <td style="width:30px; text-align:center;"><input type="checkbox" onchange="window.selectSnap(this, '${s.path}')"></td>
+            <td>
+                <div style="font-weight:600; font-size:0.9rem;">${s.date}</div>
+            </td>
+            <td style="font-family:monospace; font-size:0.8rem; opacity:0.6; overflow:hidden; text-overflow:ellipsis; max-width:200px;">
+                ${s.name}
+            </td>
+            <td style="text-align:right;">
+                <button class="btn btn-sm btn-sec" onclick="window.rollback('${s.path}')" title="Restore">♻️</button>
+                <button class="btn btn-sm btn-sec" onclick="window.browse('${s.path}')" title="Browse">📂</button>
+                <button class="btn btn-sm btn-danger" onclick="window.delSnap('${s.path}')" title="Delete">🗑</button>
+            </td>
+        </tr>
+    `).join('');
+
+    document.getElementById('snapListContainer').innerHTML = `
+        <table style="width:100%; border-collapse:collapse;">
+            <thead style="background:var(--bg); text-align:left; font-size:0.85rem; color:var(--text);">
+                <tr>
+                    <th style="padding:8px; border-bottom:1px solid var(--border);"></th>
+                    <th style="padding:8px; border-bottom:1px solid var(--border);">Created</th>
+                    <th style="padding:8px; border-bottom:1px solid var(--border);">Folder Name</th>
+                    <th style="padding:8px; border-bottom:1px solid var(--border); text-align:right">Actions</th>
+                </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+        </table>
+    `;
 }
 
-export function selectSnap(cb, path) {
-    if(cb.checked) selectedSnaps.push(path);
-    else selectedSnaps = selectedSnaps.filter(p => p !== path);
-}
-
+export function selectSnap(cb, path) { if(cb.checked) selectedSnaps.push(path); else selectedSnaps = selectedSnaps.filter(p => p !== path); }
 export async function compareSnapshots() {
     if(selectedSnaps.length !== 2) { alert("Select exactly 2 snapshots."); return; }
     const res = await fetch(`${API}/snapshots/diff?a=${encodeURIComponent(selectedSnaps[0])}&b=${encodeURIComponent(selectedSnaps[1])}`);
     const data = await res.json();
     pollLog(data.id);
 }
+export async function delSnap(path) { if(confirm("Delete?")) { await fetch(`${API}/snapshots/delete?path=${encodeURIComponent(path)}`); viewSnapshots(currentJobId); loadJobStats(currentJobId); } }
+export async function rollback(path) { if(confirm("Overwrite live data?")) { await fetch(`${API}/snapshots/rollback?job_id=${currentJobId}&path=${encodeURIComponent(path)}`); alert("Rollback triggered"); loadLogs(); } }
+export async function purgeAll() { if(prompt("Type DELETE") === "DELETE") { await fetch(`${API}/action/purge_all`); loadLogs(); } }
 
-export async function delSnap(path) {
-    if(confirm("Delete?")) {
-        await fetch(`${API}/snapshots/delete?path=${encodeURIComponent(path)}`);
-        viewSnapshots(currentJobId);
-        loadJobStats(currentJobId);
-    }
-}
-
-export async function rollback(path) {
-    if(confirm("⚠ WARNING: This will overwrite your current live data with this snapshot!\n\nThe current state will be saved as a backup folder before restoring.\n\nContinue?")) {
-        const res = await fetch(`${API}/snapshots/rollback?job_id=${currentJobId}&path=${encodeURIComponent(path)}`);
-        if(res.ok) {
-            alert("Rollback triggered! Check logs for status.");
-            loadLogs();
-        }
-    }
-}
-
-export async function purgeAll() {
-    if(prompt("Type DELETE to confirm wiping all snapshots for ALL jobs:") === "DELETE") {
-        await fetch(`${API}/action/purge_all`);
-        loadLogs();
-    }
-}

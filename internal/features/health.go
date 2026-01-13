@@ -15,7 +15,7 @@ func HandleStorageUsage(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	path := core.State.Config.TargetDrive
 	if path == "" { 
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "Target drive not set"})
+		json.NewEncoder(w).Encode(map[string]string{"error": "Target drive not set"})
 		return 
 	}
 
@@ -67,7 +67,7 @@ func HandleBtrfsStats(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	path := core.State.Config.TargetDrive
 	if path == "" { 
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "Target drive not set"})
+		json.NewEncoder(w).Encode(map[string]string{"error": "Target drive not set"})
 		return 
 	}
 	
@@ -108,7 +108,7 @@ func HandleSmartData(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	device := resolveDevice(core.State.Config.TargetDrive)
 	if device == "" { 
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "Could not resolve device"})
+		json.NewEncoder(w).Encode(map[string]string{"error": "Could not resolve device"})
 		return 
 	}
 
@@ -124,14 +124,17 @@ func HandleSmartTest(w http.ResponseWriter, r *http.Request) {
 	
 	device := resolveDevice(path)
 	if device == "" {
+		// Log internal error but return valid JSON to frontend
 		core.PrintConsole("ERROR", "SMART: Could not resolve device for path %s", path)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "Could not resolve device"})
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Could not resolve device path"})
 		return
 	}
 
 	core.PrintConsole("SMART", "Starting %s test on %s", testType, device)
 	id := core.RunCommandAsync("SMART TEST", "🩺", device, "smartctl", "-t", testType, device)
 	
+	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "id": id})
 }
 
@@ -145,7 +148,6 @@ func resolveDevice(path string) string {
 	if len(lines) < 2 { return "" }
 	
 	fullDev := strings.Fields(lines[1])[0]
-	// Strip numbers to get base device /dev/sda1 -> /dev/sda
 	baseDev := strings.TrimRight(fullDev, "0123456789")
 	if baseDev == "/dev/" { return fullDev }
 	return baseDev
