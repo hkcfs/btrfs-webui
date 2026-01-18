@@ -20,23 +20,43 @@ var cronRunner *cron.Cron
 var cronIDs map[string]cron.EntryID
 
 func main() {
+	// 1. Load State
 	core.LoadState()
 	
+	// 2. Start Scheduler
 	cronRunner = cron.New()
 	cronIDs = make(map[string]cron.EntryID)
 	cronRunner.Start()
 	refreshSchedules()
 
-	// Check on startup
+	// 3. Check for missed snapshots (Logic restored)
 	go checkMissedSnapshots()
 
+	// 4. Setup Routing
 	mux := http.NewServeMux()
-	mux.Handle("/", http.FileServer(http.Dir("./static")))
+
+	// Static Files (Routing fixed)
+	fs := http.FileServer(http.Dir("./static"))
+	mux.Handle("/static/", http.StripPrefix("/static/", fs))
+
+	// Root Handler
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/" && r.URL.Path != "/index.html" {
+			http.NotFound(w, r)
+			return
+		}
+		http.ServeFile(w, r, "static/index.html")
+	})
+
+	// Auth API
 	mux.HandleFunc("/api/login", features.HandleLogin)
+
+	// App APIs
 	mux.HandleFunc("/api/config", handleConfig)
 	mux.HandleFunc("/api/history", handleHistory)
 	mux.HandleFunc("/api/logs/clear", handleClearLogs)
 	
+	// Features
 	mux.HandleFunc("/api/storage/usage", features.HandleStorageUsage)
 	mux.HandleFunc("/api/health/smart", features.HandleSmartData)
 	mux.HandleFunc("/api/health/test", features.HandleSmartTest)
@@ -44,6 +64,7 @@ func main() {
 	mux.HandleFunc("/api/browser/list", features.HandleBrowserList)
 	mux.HandleFunc("/api/browser/download", features.HandleBrowserDownload)
 	
+	// Snapshots & Actions
 	mux.HandleFunc("/api/snapshots/list", features.HandleListSnapshots)
 	mux.HandleFunc("/api/snapshots/stats", features.HandleJobStats)
 	mux.HandleFunc("/api/snapshots/delete", features.HandleDeleteSnapshot)
@@ -52,17 +73,18 @@ func main() {
 	
 	mux.HandleFunc("/api/action/", handleGenericAction)
 
+	// Auth Middleware
 	handler := features.AuthMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		mux.ServeHTTP(w, r)
 	})
 
 	port := os.Getenv("PORT")
 	if port == "" { port = "8080" }
-	fmt.Printf("🚀 BTRFS Commander (Modular) started on :%s\n", port)
+	fmt.Printf("🚀 BTRFS Commander started on :%s\n", port)
 	log.Fatal(http.ListenAndServe(":"+port, handler))
 }
 
-// --- Scheduler Logic ---
+// --- Scheduler Logic (Restored) ---
 
 func checkMissedSnapshots() {
 	time.Sleep(3 * time.Second) // Wait for system to settle
@@ -94,7 +116,7 @@ func checkMissedSnapshots() {
 		found := false
 		for _, e := range entries {
 			if e.IsDir() {
-				// Use the robust parser from features
+				// Use the parsed time helper
 				t := features.ParseSnapshotTime(e)
 				if t.After(lastTime) {
 					lastTime = t
@@ -144,7 +166,7 @@ func refreshSchedules() {
 	}
 }
 
-// --- Handlers (Standard) ---
+// --- Handlers ---
 
 func handleConfig(w http.ResponseWriter, r *http.Request) {
 	core.State.Mu.Lock()
