@@ -33,7 +33,7 @@ export async function loadDashboard() {
         for(const [dev, stats] of Object.entries(bData)) {
             let rows = "";
             for(const [k,v] of Object.entries(stats)) {
-                let cls = (v === "OK") ? "ok-bold" : (v != "0" ? "err-red" : "");
+                let cls = (v === "OK") ? "st-Success" : (v != "0" ? "st-Failed" : "");
                 rows += `<div>${k}: <span class="${cls}">${v}</span></div>`;
             }
             html += `<div style="margin-bottom:5px;"><strong>${dev}</strong>${rows}</div>`;
@@ -46,11 +46,11 @@ export async function loadDashboard() {
         const smRes = await fetch(`${API}/health/smart`);
         const smData = await smRes.json();
         const s = smData.smart_status?.passed ? "PASSED" : "FAILED";
-        const c = smData.smart_status?.passed ? "#10b981" : "#ef4444";
+        const c = smData.smart_status?.passed ? "st-Success" : "st-Failed";
         document.getElementById('smartData').innerHTML = `
             <div>Model: <b>${smData.model_name || 'Unknown'}</b></div>
             <div>Serial: <b>${smData.serial_number || 'N/A'}</b></div>
-            <div>Status: <b style="color:${c}">${s}</b></div>
+            <div>Status: <b class="${c}">${s}</b></div>
             <div>Temp: <b>${smData.temperature?.current || '?'}°C</b></div>
             <div>Power On: <b>${smData.power_on_time?.hours || '?'} Hrs</b></div>
         `;
@@ -61,16 +61,15 @@ export async function doAction(type, action, output=false) {
     if(!confirm("Are you sure?")) return;
     const res = await fetch(`${API}/action/${type}?action=${action}`);
     const data = await res.json();
-    if(output) pollLog(data.id); else { alert("Started"); loadLogs(); }
+    if(output && data.id) pollLog(data.id); else { alert("Started"); loadLogs(); }
 }
 
 export function runSmart(type) {
-    if(!confirm("Start SMART " + type + " test?")) return;
+    if(!confirm("Start " + type + " test?")) return;
     fetch(`${API}/health/test?type=${type}`)
         .then(r => r.json())
         .then(d => {
             if(d.id) pollLog(d.id);
-            else alert("Failed to trigger test");
-        })
-        .catch(e => alert("Error: " + e));
+            else alert("Failed");
+        });
 }

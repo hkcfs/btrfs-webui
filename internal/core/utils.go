@@ -32,6 +32,7 @@ var State = AppState{
 	Config: config.GlobalConfig{
 		LogLevel: config.LogLevelDefault,
 	},
+	History: []LogEntry{},
 }
 
 func PrintConsole(level string, msg string, args ...interface{}) {
@@ -83,8 +84,7 @@ func RunCommandAsync(opType, emoji, path, cmdName string, args ...string) int64 
 		for i, e := range State.History {
 			if e.ID == entryID {
 				State.History[i].Duration = duration.String()
-				
-				// Feature: Show the exact command executed in the logs
+				// Store Command + Output
 				State.History[i].Output = fmt.Sprintf("$ %s\n\n%s", cmdStr, outputStr)
 				
 				if err != nil {
@@ -149,9 +149,8 @@ func LoadState() {
 			SaveState()
 		}
 		
-		// Ensure Jobs slice is never nil
-		if State.Config.Jobs == nil {
-			State.Config.Jobs = []config.BackupJob{}
-		}
+		// --- NIL SLICE SAFETY (RESTORED) ---
+		if State.Config.Jobs == nil { State.Config.Jobs = []config.BackupJob{} }
+		if State.History == nil { State.History = []LogEntry{} }
 	}
 }

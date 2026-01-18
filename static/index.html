@@ -4,205 +4,224 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>BTRFS Commander</title>
-    <link rel="stylesheet" href="css/style.css">
-    <script type="module" src="js/app.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+    <!-- FIX: Absolute paths to static assets -->
+    <link rel="stylesheet" href="/static/css/style.css">
+    <script type="module" src="/static/js/app.js"></script>
 </head>
 <body>
-    <div class="container">
-        <header>
-            <h1>🍃 BTRFS Commander</h1>
-            <div style="display:flex; gap:10px; align-items:center">
-                <span id="clock" style="font-family:monospace; margin-right:15px; opacity:0.7"></span>
-                <button class="btn" onclick="toggleTheme()">🌗 Theme</button>
-                <button class="btn btn-danger" onclick="logout()" id="logoutBtn" style="display:none">Logout</button>
+    <div class="app-container">
+        <aside class="sidebar">
+            <div class="brand"><span>//</span> COMMANDER</div>
+            <nav style="display:flex; flex-direction:column; gap:5px;">
+                <button class="nav-btn active" onclick="nav('dashboard')">📊 Dashboard</button>
+                <button class="nav-btn" onclick="nav('jobs')">📸 Backup Jobs</button>
+                <button class="nav-btn" onclick="nav('settings')">⚙ Settings</button>
+            </nav>
+            <div style="margin-top:auto">
+                <button class="nav-btn" onclick="toggleTheme()">🌗 Toggle Theme</button>
+                <button class="btn btn-danger" onclick="logout()" id="logoutBtn" style="width:100%; display:none; margin-top:10px;">Logout</button>
+                <div style="margin-top:10px; color:var(--text-muted); font-size:0.7rem; text-align:center" id="clock"></div>
             </div>
-        </header>
+        </aside>
 
-        <div class="tab-nav">
-            <button class="tab-btn active" onclick="switchTab('dashboard')">📊 Dashboard</button>
-            <button class="tab-btn" onclick="switchTab('jobs')">📸 Backup Jobs</button>
-            <button class="tab-btn" onclick="switchTab('settings')">⚙ Settings</button>
-        </div>
+        <main class="main-content">
+            <div class="content-wrapper">
+                <div class="top-bar">
+                    <div class="page-title" id="pageTitle">Dashboard</div>
+                    <button class="btn" onclick="window.location.reload()">Refresh Data</button>
+                </div>
 
-        <!-- DASHBOARD TAB -->
-        <div id="dashboard" class="tab-content active">
-            <div class="grid">
-                <!-- Storage -->
-                <div class="card" style="grid-column: span 2;">
-                    <h2>💾 Storage Usage <button class="btn btn-sm" onclick="loadStorage()">↻</button></h2>
-                    <div id="storageLoading">Loading...</div>
-                    <div id="storageContent" style="display:none">
-                        <div class="storage-bar">
-                            <div id="barUsed" class="seg seg-used" style="width:0%"></div>
-                            <div id="barMeta" class="seg seg-meta" style="width:0%"></div>
-                            <div id="barFree" class="seg seg-free" style="width:0%"></div>
+                <!-- DASHBOARD -->
+                <div id="view-dashboard" class="view-section">
+                    <div class="grid">
+                        <div class="card span-2">
+                            <h2><span>💾 Storage Usage</span><button class="btn btn-sm" onclick="loadStorage()">↻</button></h2>
+                            <div id="storageLoading">Loading...</div>
+                            <div id="storageContent" style="display:none">
+                                <div class="storage-container">
+                                    <div class="storage-bar">
+                                        <div id="barUsed" class="seg seg-used" style="width:0%"></div>
+                                        <div id="barMeta" class="seg seg-meta" style="width:0%"></div>
+                                        <div id="barFree" class="seg seg-free" style="width:0%"></div>
+                                    </div>
+                                    <div class="legend">
+                                        <span><span class="dot seg-used"></span>Data: <b id="valUsed"></b></span>
+                                        <span><span class="dot seg-meta"></span>Meta: <b id="valMeta"></b></span>
+                                        <span><span class="dot seg-free"></span>Free: <b id="valFree"></b></span>
+                                        <span style="margin-left:auto; color:var(--accent)">Unalloc: <b id="valUnalloc"></b></span>
+                                    </div>
+                                </div>
+                            </div>
+                            <span class="card-inner"></span>
                         </div>
-                        <div class="legend">
-                            <span><span class="dot seg-used"></span>Data: <b id="valUsed"></b></span>
-                            <span><span class="dot seg-meta"></span>Metadata: <b id="valMeta"></b></span>
-                            <span><span class="dot seg-free"></span>Free: <b id="valFree"></b></span>
-                            <span style="margin-left:auto; color:gray">Unallocated: <b id="valUnalloc" style="color:var(--text)"></b></span>
+
+                        <div class="card">
+                            <h2>🩺 Drive Health</h2>
+                            <div id="smartData" style="min-height:60px; margin-bottom:15px">Loading...</div>
+                            <div class="btn-group" style="margin-top:15px">
+                                <button class="btn btn-sm" onclick="runSmart('short')">Short Test</button>
+                                <button class="btn btn-sm" onclick="runSmart('long')">Long Test</button>
+                            </div>
+                            <span class="card-inner"></span>
                         </div>
+
+                        <div class="card">
+                            <h2>⚠️ BTRFS Errors</h2>
+                            <div id="btrfsStats" style="font-size:0.85rem; max-height:100px; overflow-y:auto;">Loading...</div>
+                            <span class="card-inner"></span>
+                        </div>
+
+                        <div class="card">
+                            <h2>🛠 Maintenance</h2>
+                            <div class="flex-col">
+                                <div class="flex" style="align-items:center">
+                                    <span style="width:60px; color:var(--text-muted)">Scrub</span>
+                                    <button class="btn btn-primary btn-sm" style="flex:1" onclick="doAction('scrub','start', true)">Start</button>
+                                    <button class="btn btn-sm" onclick="doAction('scrub','status', true)">Status</button>
+                                    <button class="btn btn-danger btn-sm" onclick="doAction('scrub','cancel', true)">Stop</button>
+                                </div>
+                                <div class="flex" style="align-items:center">
+                                    <span style="width:60px; color:var(--text-muted)">Balance</span>
+                                    <button class="btn btn-primary btn-sm" style="flex:1" onclick="doAction('balance','start', true)">Start</button>
+                                    <button class="btn btn-sm" onclick="doAction('balance','status', true)">Status</button>
+                                    <button class="btn btn-danger btn-sm" onclick="doAction('balance','cancel', true)">Stop</button>
+                                </div>
+                                <div class="btn-group" style="margin-top:5px">
+                                    <button class="btn btn-sm" onclick="doAction('defrag','',true)">Defrag</button>
+                                    <button class="btn btn-sm" onclick="doAction('compsize','',true)">Compsize</button>
+                                </div>
+                            </div>
+                            <span class="card-inner"></span>
+                        </div>
+                    </div>
+
+                    <div class="card mt-20">
+                        <h2>Recent Activity</h2>
+                        <div id="dashLogs" class="log-box"></div>
+                        <span class="card-inner"></span>
                     </div>
                 </div>
 
-                <!-- Health -->
-                <div class="card">
-                    <h2>🩺 Drive Health (SMART)</h2>
-                    <div id="smartData" style="font-size:0.9rem">Loading...</div>
-                    <div style="margin-top:10px; display:flex; gap:5px;">
-                        <button class="btn btn-sm" onclick="runSmart('short')">Short Test</button>
-                        <button class="btn btn-sm" onclick="runSmart('long')">Long Test</button>
+                <!-- JOBS -->
+                <div id="view-jobs" class="view-section" style="display:none">
+                    <div class="grid" id="jobList"></div>
+                    <div class="card mt-20" style="border-color:var(--danger)">
+                        <h2 style="color:var(--danger)">⚠️ Danger Zone</h2>
+                        <div class="flex">
+                            <button class="btn btn-danger" onclick="clearLogs()">Clear Log History</button>
+                            <button class="btn btn-danger" onclick="purgeAll()">🔥 Purge ALL Snapshots</button>
+                        </div>
+                        <span class="card-inner"></span>
+                    </div>
+                    <div class="card mt-20">
+                        <h2>Full History</h2>
+                        <div id="fullLogs" class="log-box"></div>
+                        <span class="card-inner"></span>
                     </div>
                 </div>
 
-                <!-- BTRFS Stats -->
-                <div class="card">
-                    <h2>⚠️ BTRFS Errors</h2>
-                    <div id="btrfsStats" style="font-family:monospace; font-size:0.9rem;">Loading...</div>
-                </div>
-
-                <!-- Maintenance -->
-                <div class="card">
-                    <h2>🛠 Maintenance</h2>
-                    <div style="display:flex; flex-direction:column; gap:10px;">
-                        <div style="display:flex; gap:10px; align-items:center;">
-                            <strong style="width:60px">Scrub</strong>
-                            <button class="btn btn-primary btn-sm" onclick="doAction('scrub','start')">Start</button>
-                            <button class="btn btn-sm" onclick="doAction('scrub','status',true)">Status</button>
-                            <button class="btn btn-danger btn-sm" onclick="doAction('scrub','cancel')">Stop</button>
-                        </div>
-                        <div style="display:flex; gap:10px; align-items:center;">
-                            <strong style="width:60px">Balance</strong>
-                            <button class="btn btn-primary btn-sm" onclick="doAction('balance','start')">Start</button>
-                            <button class="btn btn-sm" onclick="doAction('balance','status',true)">Status</button>
-                            <button class="btn btn-danger btn-sm" onclick="doAction('balance','cancel')">Stop</button>
-                        </div>
-                        <div style="display:flex; gap:10px; align-items:center;">
-                            <strong style="width:60px">Optimize</strong>
-                            <button class="btn btn-sm" style="flex:1" onclick="doAction('defrag')">Defrag</button>
-                            <button class="btn btn-sm" style="flex:1" onclick="doAction('compsize','',true)">Compsize</button>
-                        </div>
+                <!-- SETTINGS -->
+                <div id="view-settings" class="view-section" style="display:none">
+                    <div class="card" style="max-width:600px">
+                        <h2>Global Configuration</h2>
+                        <form id="globalForm">
+                            <div class="form-group">
+                                <label>Target Drive</label>
+                                <input type="text" id="target_drive" placeholder="/host/mnt/data">
+                            </div>
+                            <div class="form-group">
+                                <label>Log Level</label>
+                                <select id="log_level">
+                                    <option value="DEFAULT">Default</option>
+                                    <option value="VERBOSE">Verbose</option>
+                                    <option value="NONE">None</option>
+                                </select>
+                            </div>
+                            <h3>Global Schedules</h3>
+                            <div id="globalScheds"></div>
+                            <button type="submit" class="btn btn-primary" style="width:100%; margin-top:20px;">Save Configuration</button>
+                        </form>
+                        <span class="card-inner"></span>
                     </div>
                 </div>
             </div>
-
-            <h3 style="margin-top:30px; border-bottom:1px solid var(--border); padding-bottom:10px;">Recent Activity</h3>
-            <div id="dashLogs" class="log-box">Loading logs...</div>
-        </div>
-
-        <!-- JOBS TAB -->
-        <div id="jobs" class="tab-content">
-            <div class="grid">
-                <div class="card" style="grid-column: span 2">
-                    <h2>📸 Backup Jobs <button class="btn btn-primary btn-sm" onclick="editJob('new')">+ New Job</button></h2>
-                    <div id="jobList">Loading...</div>
-                </div>
-                <div class="card">
-                    <h2>⚠️ Danger Zone</h2>
-                    <div style="display:flex; flex-direction:column; gap:10px;">
-                        <button class="btn" onclick="clearLogs()">Clear Log History</button>
-                        <button class="btn btn-danger" onclick="purgeAll()">🔥 Purge ALL Snapshots</button>
-                    </div>
-                </div>
-            </div>
-            <h3 style="margin-top:30px;">Full History</h3>
-            <div id="fullLogs" class="log-box"></div>
-        </div>
-
-        <!-- SETTINGS TAB -->
-        <div id="settings" class="tab-content">
-            <div class="card" style="max-width:600px">
-                <h2>⚙ Global Settings</h2>
-                <form id="globalForm">
-                    <div class="form-group">
-                        <label>Target Drive</label>
-                        <input type="text" id="target_drive" placeholder="/host/mnt/data">
-                    </div>
-                    <div class="form-group">
-                        <label>Log Level</label>
-                        <select id="log_level">
-                            <option value="NONE">None</option>
-                            <option value="DEFAULT">Default</option>
-                            <option value="VERBOSE">Verbose</option>
-                        </select>
-                    </div>
-                    <h3>Global Schedules</h3>
-                    <div id="globalScheds"></div>
-                    <button type="submit" class="btn btn-primary" style="width:100%; justify-content:center; margin-top:20px;">Save Global Config</button>
-                </form>
-            </div>
-        </div>
+        </main>
     </div>
 
-    <!-- Job Modal (WITH RESTORED ADVANCED SECTION) -->
-    <div id="jobModal" class="modal">
-        <div class="modal-content">
-            <h2>Edit Backup Job</h2>
+    <!-- Job Modal -->
+    <div id="jobModal" class="modal-overlay">
+        <div class="modal-window">
+            <div class="modal-header">
+                <h2>Configure Job</h2>
+                <button class="btn btn-sm" onclick="closeModal('jobModal')">X</button>
+            </div>
             <form id="jobForm">
                 <input type="hidden" id="j_id">
-                <div class="form-group"><label>Name</label><input type="text" id="j_name" required></div>
-                <div style="display:grid; grid-template-columns:1fr 1fr; gap:15px;">
-                    <div class="form-group"><label>Source Path</label><input type="text" id="j_src" required></div>
-                    <div class="form-group"><label>Destination Path</label><input type="text" id="j_dest" required></div>
+                <div class="form-group"><label>Job Name</label><input type="text" id="j_name" required></div>
+                <div class="grid" style="gap:10px; margin-bottom:15px;">
+                    <div class="form-group"><label>Source</label><input type="text" id="j_src" required></div>
+                    <div class="form-group"><label>Destination</label><input type="text" id="j_dest" required></div>
                 </div>
                 
-                <div style="display:grid; grid-template-columns:1fr 1fr; gap:15px; margin-bottom:15px;">
-                    <div style="background:var(--bg); padding:15px; border-radius:8px;">
-                        <label style="display:flex; justify-content:space-between"><span>Schedule</span> <input type="checkbox" id="j_sched_en" style="width:auto"></label>
-                        <div style="display:flex; gap:5px; margin-top:5px;">
-                            <select id="j_sched_type"><option value="every_x">Every X</option><option value="cron">Cron</option></select>
-                            <input type="text" id="j_sched_val" placeholder="15" style="width:50px">
-                            <select id="j_sched_unit" style="width:70px"><option value="minutes">Min</option><option value="hours">Hr</option><option value="days">Day</option></select>
-                        </div>
+                <!-- Schedule -->
+                <div style="background:var(--bg-app); padding:15px; border:1px solid var(--border); margin-bottom:10px;">
+                    <label class="flex" style="justify-content:space-between"><span>Schedule</span> <input type="checkbox" id="j_sched_en"></label>
+                    <div class="form-group" style="margin-top:10px">
+                        <select id="j_sched_type" onchange="toggleJobSchedUI()">
+                            <option value="every_x">Interval (Every X)</option>
+                            <option value="cron">Cron Expression</option>
+                        </select>
                     </div>
-                    <div style="background:var(--bg); padding:15px; border-radius:8px;">
-                        <label style="display:flex; justify-content:space-between"><span>Retention</span> <input type="checkbox" id="j_ret_en" style="width:auto"></label>
-                        <div style="display:flex; gap:5px; margin-top:5px;">
-                            <select id="j_ret_mode" onchange="toggleJobRetentionUI()"><option value="count">Count</option><option value="time">Time</option></select>
-                            <input type="number" id="j_ret_val" placeholder="10" style="width:50px">
-                            <select id="j_ret_unit" style="width:70px"><option value="days">Day</option><option value="weeks">Wk</option></select>
-                        </div>
+                    <div id="sched_interval_ui" class="flex" style="margin-top:5px">
+                        <input type="number" id="j_sched_val" placeholder="1">
+                        <select id="j_sched_unit">
+                            <option value="minutes">Minutes</option>
+                            <option value="hours">Hours</option>
+                            <option value="days">Days</option>
+                        </select>
+                    </div>
+                    <div id="sched_cron_ui" style="display:none; margin-top:5px">
+                        <input type="text" id="j_sched_cron" placeholder="0 2 * * *">
                     </div>
                 </div>
 
-                <details style="background:var(--bg); padding:15px; border-radius:8px; margin-bottom:15px;">
-                    <summary style="cursor:pointer; font-weight:600">Advanced (Hooks & Replication)</summary>
-                    <div style="margin-top:10px; display:grid; gap:10px;">
-                        <div class="form-group"><label>Pre-Hook Command</label><input type="text" id="j_pre" placeholder="e.g. docker stop db"></div>
-                        <div class="form-group"><label>Post-Hook Command</label><input type="text" id="j_post" placeholder="e.g. docker start db"></div>
-                        <hr style="width:100%; border:0; border-top:1px solid var(--border)">
-                        <label style="display:flex; gap:10px; align-items:center;">
-                            <input type="checkbox" id="j_repl_en" style="width:auto"> Enable Replication (Send/Receive)
-                        </label>
-                        <div class="form-group"><label>Replication Target</label><input type="text" id="j_repl_dest" placeholder="/host/mnt/backup_drive/folder"></div>
+                <!-- Retention -->
+                <div style="background:var(--bg-app); padding:15px; border:1px solid var(--border); margin-bottom:15px;">
+                    <label class="flex" style="justify-content:space-between"><span>Retention</span> <input type="checkbox" id="j_ret_en"></label>
+                    <div class="flex" style="margin-top:5px">
+                        <select id="j_ret_mode" onchange="toggleJobRetentionUI()"><option value="count">Count</option><option value="time">Time</option></select>
+                        <input type="number" id="j_ret_val" placeholder="10">
+                        <select id="j_ret_unit"><option value="days">Days</option><option value="weeks">Wks</option></select>
                     </div>
+                </div>
+
+                <details style="background:var(--bg-app); padding:15px; border:1px solid var(--border); margin-bottom:20px;">
+                    <summary style="cursor:pointer; color:var(--text-muted)">Advanced (Hooks & Replication)</summary>
+                    <div class="form-group mt-20"><label>Pre-Hook</label><input type="text" id="j_pre"></div>
+                    <div class="form-group"><label>Post-Hook</label><input type="text" id="j_post"></div>
+                    <hr style="border:0; border-top:1px solid var(--border); margin:15px 0">
+                    <label class="flex" style="align-items:center; gap:10px; margin-bottom:10px;">
+                        <input type="checkbox" id="j_repl_en"> Enable Replication
+                    </label>
+                    <div class="form-group"><label>Replication Target</label><input type="text" id="j_repl_dest"></div>
                 </details>
 
-                <div style="margin-top:20px; display:flex; justify-content:flex-end; gap:10px;">
-                    <button type="button" class="btn btn-danger" onclick="deleteJob()">Delete</button>
-                    <button type="button" class="btn" onclick="closeModal('jobModal')">Cancel</button>
-                    <button type="submit" class="btn btn-primary">Save Job</button>
+                <div class="text-right">
+                    <button type="button" class="btn btn-danger" onclick="deleteJob()" style="float:left">Delete</button>
+                    <button type="submit" class="btn btn-primary">Save Changes</button>
                 </div>
             </form>
         </div>
     </div>
 
-    <!-- Output Modal -->
-    <div id="outputModal" class="modal">
-        <div class="modal-content" style="height: auto; max-height:80vh;">
-            <h2>Output <button class="btn btn-sm" onclick="closeModal('outputModal')" style="float:right">Close</button></h2>
-            <div id="cmdOutput" class="log-output" style="display:block; max-height:50vh; overflow:auto;"></div>
-        </div>
-    </div>
-
-    <!-- Snapshots List Modal -->
-    <div id="snapListModal" class="modal">
-        <div class="modal-content">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-                <h2 style="margin:0">Snapshots</h2>
-                <div style="display:flex; gap:10px">
-                    <button class="btn btn-primary btn-sm" onclick="compareSnapshots()">🔍 Compare Selected (2)</button>
+    <!-- Snapshot Modal -->
+    <div id="snapListModal" class="modal-overlay">
+        <div class="modal-window">
+            <div class="modal-header">
+                <h2>Snapshots</h2>
+                <div class="btn-group">
+                    <button class="btn btn-primary btn-sm" onclick="compareSnapshots()">Compare (2)</button>
                     <button class="btn btn-sm" onclick="closeModal('snapListModal')">Close</button>
                 </div>
             </div>
@@ -210,13 +229,27 @@
         </div>
     </div>
 
+    <!-- Output Modal -->
+    <div id="outputModal" class="modal-overlay">
+        <div class="modal-window">
+            <div class="modal-header">
+                <h2>Live Logs</h2>
+                <button class="btn btn-sm" onclick="closeModal('outputModal')">Close</button>
+            </div>
+            <div id="cmdOutput" class="log-output" style="display:block; max-height:400px; padding:15px;"></div>
+        </div>
+    </div>
+
     <!-- Browser Modal -->
-    <div id="browserModal" class="modal">
-        <div class="modal-content">
-            <h2>Browse <button class="btn btn-sm" onclick="closeModal('browserModal')" style="float:right">Close</button></h2>
-            <div style="padding:10px; background:var(--bg); margin-bottom:10px; display:flex; gap:10px; align-items:center;">
-                <button class="btn btn-sm" onclick="browseUp()">⬆ Up</button>
-                <code id="browserPath" style="flex:1"></code>
+    <div id="browserModal" class="modal-overlay">
+        <div class="modal-window">
+            <div class="modal-header">
+                <h2>File Browser</h2>
+                <button class="btn btn-sm" onclick="closeModal('browserModal')">Close</button>
+            </div>
+            <div style="background:var(--bg-app); padding:10px; margin-bottom:10px; display:flex; gap:10px; align-items:center; border:1px solid var(--border);">
+                <button class="btn btn-sm" onclick="browseUp()">⬆</button>
+                <code id="browserPath" style="flex:1; overflow:hidden"></code>
             </div>
             <div id="fileList" class="modal-body"></div>
         </div>

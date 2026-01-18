@@ -6,17 +6,17 @@ export async function browse(path) {
     currentPath = path;
     openModal('browserModal');
     
-    // Breadcrumb style path
+    // Breadcrumbs Logic
     const parts = path.split('/').filter(p => p);
     let breadcrumbHtml = `<span onclick="window.browse('/')" style="cursor:pointer;color:var(--accent)">/</span>`;
     let buildPath = "";
     parts.forEach((p, i) => {
         buildPath += "/" + p;
-        const safePath = buildPath.replace(/\\/g, "\\\\"); // Escape backslashes for JS string
+        const safePath = buildPath.replace(/\\/g, "\\\\");
         if (i === parts.length - 1) {
-            breadcrumbHtml += ` <span style="opacity:0.5">/</span> <b>${p}</b>`;
+            breadcrumbHtml += ` <span class="breadcrumb-sep">/</span> <span class="current">${p}</span>`;
         } else {
-            breadcrumbHtml += ` <span style="opacity:0.5">/</span> <span onclick="window.browse('${safePath}')" style="cursor:pointer;color:var(--accent)">${p}</span>`;
+            breadcrumbHtml += ` <span class="breadcrumb-sep">/</span> <span onclick="window.browse('${safePath}')" style="cursor:pointer;color:var(--accent)">${p}</span>`;
         }
     });
     
@@ -24,7 +24,7 @@ export async function browse(path) {
     document.getElementById('fileList').innerHTML = "<div style='padding:20px;text-align:center'>Loading...</div>";
     
     const res = await fetch(`${API}/browser/list?path=${encodeURIComponent(path)}`);
-    if(!res.ok) { document.getElementById('fileList').innerHTML = "<div style='padding:20px;text-align:center;color:red'>Access Denied</div>"; return; }
+    if(!res.ok) { document.getElementById('fileList').innerHTML = "<div style='padding:20px;text-align:center;color:var(--danger)'>Access Denied</div>"; return; }
     const files = await res.json();
     
     if(files.length === 0) {
@@ -57,9 +57,7 @@ function formatSize(bytes) {
 }
 
 export function browseUp() {
-    const p = currentPath.split('/'); 
-    p.pop(); 
-    // If root
+    const p = currentPath.split('/'); p.pop(); 
     if(p.length === 0 || (p.length === 1 && p[0] === "")) browse("/");
     else browse(p.join('/'));
 }
