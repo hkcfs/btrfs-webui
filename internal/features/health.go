@@ -124,17 +124,17 @@ func HandleSmartTest(w http.ResponseWriter, r *http.Request) {
 	
 	device := resolveDevice(path)
 	if device == "" {
-		// Log internal error but return valid JSON to frontend
 		core.PrintConsole("ERROR", "SMART: Could not resolve device for path %s", path)
-		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{"error": "Could not resolve device path"})
 		return
 	}
 
-	core.PrintConsole("SMART", "Starting %s test on %s", testType, device)
+	// This shows in Docker logs
+	core.PrintConsole("DEFAULT", "Starting SMART %s test on %s", testType, device)
+	
+	// This starts the UI log
 	id := core.RunCommandAsync("SMART TEST", "🩺", device, "smartctl", "-t", testType, device)
 	
-	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "id": id})
 }
 
