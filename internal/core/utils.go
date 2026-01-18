@@ -62,6 +62,7 @@ func RunCommandAsync(opType, emoji, path, cmdName string, args ...string) int64 
 
 	go func() {
 		PrintConsole(config.LogLevelVerbose, "EXEC: %s", cmdStr)
+		
 		cmd := exec.Command(cmdName, args...)
 		output, err := cmd.CombinedOutput()
 		duration := time.Since(startTime).Round(time.Millisecond)
@@ -71,17 +72,21 @@ func RunCommandAsync(opType, emoji, path, cmdName string, args ...string) int64 
 		if err != nil { status = "Failed" }
 
 		if status == "Failed" {
-			PrintConsole(config.LogLevelDefault, "ERROR %s: %v", opType, err)
+			PrintConsole("ERROR", "%s Failed: %v", opType, err)
 		} else {
 			PrintConsole(config.LogLevelVerbose, "DONE %s (%s)", opType, duration)
 		}
 
 		State.Mu.Lock()
 		defer State.Mu.Unlock()
+		
 		for i, e := range State.History {
 			if e.ID == entryID {
 				State.History[i].Duration = duration.String()
-				State.History[i].Output = outputStr
+				
+				// Feature: Show the exact command executed in the logs
+				State.History[i].Output = fmt.Sprintf("$ %s\n\n%s", cmdStr, outputStr)
+				
 				if err != nil {
 					if strings.Contains(outputStr, "Operation in progress") || strings.Contains(outputStr, "inprogress") {
 						State.History[i].Status = "Warning"
@@ -114,7 +119,7 @@ func LoadState() {
 		State.Config = loaded.Config
 		State.History = loaded.History
 
-		// --- MIGRATION LOGIC ---
+		// --- MIGRATION LOGIC (RESTORED) ---
 		// If jobs list is empty BUT we have old snapshot settings, migrate them.
 		if len(State.Config.Jobs) == 0 && State.Config.SnapshotSource != "" {
 			fmt.Println("Converting legacy configuration to new Job format...")
@@ -142,6 +147,11 @@ func LoadState() {
 			State.Config.SnapshotDest = ""
 			
 			SaveState()
+		}
+		
+		// Ensure Jobs slice is never nil
+		if State.Config.Jobs == nil {
+			State.Config.Jobs = []config.BackupJob{}
 		}
 	}
 }
