@@ -35,6 +35,16 @@
                 <!-- DASHBOARD -->
                 <div id="view-dashboard" class="view-section">
                     <div class="grid">
+                        
+                        <!-- CALENDAR CARD (NEW) -->
+                        <div class="card">
+                            <h2>📅 History (Last 5 Days)</h2>
+                            <div id="calMiniList" style="flex:1; margin-bottom:10px;">Loading...</div>
+                            <button class="btn btn-sm btn-sec" style="width:100%" onclick="openCalendar()">View Full Calendar</button>
+                            <span class="card-inner"></span>
+                        </div>
+
+                        <!-- Storage Card -->
                         <div class="card span-2">
                             <h2><span>💾 Storage Usage</span><button class="btn btn-sm" onclick="loadStorage()">↻</button></h2>
                             <div id="storageLoading">Loading...</div>
@@ -56,6 +66,7 @@
                             <span class="card-inner"></span>
                         </div>
 
+                        <!-- Health -->
                         <div class="card">
                             <h2>🩺 Drive Health</h2>
                             <div id="smartData" style="min-height:60px; margin-bottom:15px">Loading...</div>
@@ -66,12 +77,14 @@
                             <span class="card-inner"></span>
                         </div>
 
+                        <!-- BTRFS Stats -->
                         <div class="card">
                             <h2>⚠️ BTRFS Errors</h2>
                             <div id="btrfsStats" style="font-size:0.85rem; max-height:100px; overflow-y:auto;">Loading...</div>
                             <span class="card-inner"></span>
                         </div>
 
+                        <!-- Maintenance -->
                         <div class="card">
                             <h2>🛠 Maintenance</h2>
                             <div class="flex-col">
@@ -149,6 +162,22 @@
         </main>
     </div>
 
+    <!-- CALENDAR MODAL (NEW) -->
+    <div id="calendarModal" class="modal-overlay">
+        <div class="modal-window">
+            <div class="modal-header">
+                <h2>Activity Calendar</h2>
+                <button class="btn btn-sm" onclick="closeModal('calendarModal')">X</button>
+            </div>
+            <div class="cal-header">
+                <button class="btn btn-sm" onclick="changeMonth(-1)">◀ Prev</button>
+                <div id="calMonthLabel" style="font-weight:bold; font-size:1.1rem; color:var(--text-main)"></div>
+                <button class="btn btn-sm" onclick="changeMonth(1)">Next ▶</button>
+            </div>
+            <div id="calGrid" class="cal-grid modal-body"></div>
+        </div>
+    </div>
+
     <!-- Job Modal -->
     <div id="jobModal" class="modal-overlay">
         <div class="modal-window">
@@ -164,7 +193,6 @@
                     <div class="form-group"><label>Destination</label><input type="text" id="j_dest" required></div>
                 </div>
                 
-                <!-- Schedule -->
                 <div style="background:var(--bg-app); padding:15px; border:1px solid var(--border); margin-bottom:10px;">
                     <label class="flex" style="justify-content:space-between"><span>Schedule</span> <input type="checkbox" id="j_sched_en"></label>
                     <div class="form-group" style="margin-top:10px">
@@ -186,7 +214,6 @@
                     </div>
                 </div>
 
-                <!-- Retention -->
                 <div style="background:var(--bg-app); padding:15px; border:1px solid var(--border); margin-bottom:15px;">
                     <label class="flex" style="justify-content:space-between"><span>Retention</span> <input type="checkbox" id="j_ret_en"></label>
                     <div class="flex" style="margin-top:5px">

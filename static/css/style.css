@@ -245,3 +245,35 @@ th { font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; font-s
 td { padding: 10px 8px; border-bottom: 1px solid var(--border); vertical-align: middle; }
 tr:last-child td { border-bottom: none; }
 tr.snap-row:hover td { background-color: var(--bg-app); }
+
+/* --- CALENDAR MODULE --- */
+.cal-mini-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 8px 0; border-bottom: 1px solid var(--border);
+}
+.cal-mini-row:last-child { border-bottom: none; }
+.cal-date { font-weight: 600; color: var(--text-main); font-size: 0.9rem; }
+.cal-status { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; }
+
+/* Full Calendar Grid */
+.cal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; }
+.cal-day-header { text-align: center; color: var(--text-muted); font-size: 0.8rem; padding-bottom: 5px; }
+.cal-day {
+    background: var(--bg-app); border: 1px solid var(--border);
+    min-height: 80px; padding: 5px; position: relative;
+    transition: 0.2s; cursor: default;
+}
+.cal-day:hover { border-color: var(--text-muted); }
+.cal-day-num { position: absolute; top: 5px; right: 5px; font-size: 0.8rem; color: var(--text-muted); }
+.cal-event-dot {
+    width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin: 2px;
+}
+.cal-today { border-color: var(--accent); background: rgba(255, 77, 0, 0.05); }
+
+/* Status Colors for Calendar */
+.bg-success { background: var(--success); }
+.bg-fail { background: var(--danger); }
+.bg-warn { background: var(--warning); }
+.text-success { color: var(--success); }
+.text-fail { color: var(--danger); }
