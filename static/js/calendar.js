@@ -9,12 +9,13 @@ export async function initCalendar() {
         cachedLogs = await res.json() || [];
         renderMiniWidget();
     } catch(e) { 
-        console.error("Calendar init failed:", e);
-        document.getElementById('calMiniList').innerHTML = "<small>Failed to load history</small>";
+        console.error("Calendar error:", e);
+        const el = document.getElementById('calMiniList');
+        if(el) el.innerHTML = "Failed to load history.";
     }
 }
 
-// Shows last 5 days on Dashboard
+// Shows last 5 days on Dashboard with BADGES
 function renderMiniWidget() {
     const container = document.getElementById('calMiniList');
     if(!container) return;
@@ -23,33 +24,39 @@ function renderMiniWidget() {
     const sortedDates = Object.keys(grouped).sort().reverse().slice(0, 5);
 
     if(sortedDates.length === 0) {
-        container.innerHTML = "<div style='padding:10px; opacity:0.6; font-size:0.85rem'>No history recorded yet.</div>";
+        container.innerHTML = "<div style='padding:15px; opacity:0.5; text-align:center; border:1px dashed #333'>No activity recorded yet.</div>";
         return;
     }
 
     container.innerHTML = sortedDates.map(date => {
         const dayLogs = grouped[date];
-        let statusClass = "text-success";
-        let statusText = `OK (${dayLogs.length})`;
+        const count = dayLogs.length;
         
-        if(dayLogs.some(l => l.status.toLowerCase().includes("fail"))) {
-            statusClass = "text-fail";
-            statusText = "ERRORS";
-        }
+        // Determine Status
+        const hasErrors = dayLogs.some(l => l.status.toLowerCase().includes("fail"));
+        const badgeClass = hasErrors ? "badge-fail" : "badge-success";
+        const badgeText = hasErrors ? `⚠ ERRORS (${count})` : `✔ OK (${count})`;
         
+        // Format Date (e.g. "Jan 24")
         const dObj = new Date(date);
-        const dateStr = dObj.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+        const dayName = dObj.toLocaleDateString(undefined, { weekday: 'short' }); // "Sat"
+        const dateStr = dObj.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }); // "Jan 24"
 
         return `
-        <div style="display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid #333; font-size:0.9rem">
-            <span style="color:#e0e0e0">${dateStr}</span>
-            <span class="${statusClass}" style="font-weight:bold; font-size:0.8rem">${statusText}</span>
+        <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px solid var(--border);">
+            <div style="display:flex; gap:10px; align-items:center;">
+                <span style="color:var(--text-muted); font-size:0.8rem; width:30px">${dayName}</span>
+                <span style="font-weight:600; color:var(--text-main)">${dateStr}</span>
+            </div>
+            <span class="badge ${badgeClass}">${badgeText}</span>
         </div>`;
     }).join('');
 }
 
 export function openCalendarModal() {
     openModal('calendarModal');
+    // Ensure we render the current real month first, not a cached one
+    currentMonth = new Date();
     renderFullCalendar();
 }
 
@@ -73,38 +80,39 @@ function renderFullCalendar() {
     const firstDay = new Date(year, month, 1);
     const lastDay = new Date(year, month + 1, 0);
     const daysInMonth = lastDay.getDate();
-    const startDay = firstDay.getDay();
+    const startDay = firstDay.getDay(); // 0 = Sun
 
     const grouped = groupLogsByDate(cachedLogs);
 
-    // Headers
-    ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].forEach(d => {
-        grid.innerHTML += `<div style="text-align:center; color:#888; font-size:0.8rem; padding-bottom:5px;">${d}</div>`;
+    // 1. Render Headers
+    ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'].forEach(d => {
+        grid.innerHTML += `<div class="cal-day-header">${d}</div>`;
     });
 
-    // Empty cells
+    // 2. Render Empty Cells (before 1st of month)
     for(let i=0; i<startDay; i++) {
-        grid.innerHTML += `<div></div>`;
+        grid.innerHTML += `<div style="background:var(--bg-app); border-right:1px solid var(--border); border-bottom:1px solid var(--border)"></div>`;
     }
 
-    // Days
-    const todayStr = new Date().toISOString().split('T')[0];
+    // 3. Render Days
+    const now = new Date();
+    const todayStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
 
     for(let d=1; d<=daysInMonth; d++) {
         const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-        const isToday = dateStr === todayStr ? 'border-color: #ff4d00; background: rgba(255, 77, 0, 0.1);' : '';
+        const isToday = dateStr === todayStr ? 'cal-today' : '';
         const dayLogs = grouped[dateStr] || [];
         
         let dots = "";
         dayLogs.forEach(l => {
-            const color = l.status.toLowerCase().includes("fail") ? '#ff3333' : '#00c853';
-            dots += `<div style="width:6px; height:6px; border-radius:50%; background:${color}; margin:1px;"></div>`;
+            const color = l.status.toLowerCase().includes("fail") ? 'bg-fail' : 'bg-success';
+            dots += `<span class="cal-event-dot ${color}" title="${l.type}"></span>`;
         });
 
         grid.innerHTML += `
-        <div style="background:#0a0a0a; border:1px solid #333; min-height:70px; padding:5px; position:relative; ${isToday}">
-            <span style="position:absolute; top:5px; right:5px; font-size:0.8rem; color:#888">${d}</span>
-            <div style="margin-top:20px; display:flex; flex-wrap:wrap; gap:2px">${dots}</div>
+        <div class="cal-day ${isToday}">
+            <span class="cal-day-num">${d}</span>
+            <div class="cal-dots">${dots}</div>
         </div>`;
     }
 }
@@ -113,11 +121,10 @@ function groupLogsByDate(logs) {
     const groups = {};
     logs.forEach(l => {
         let dateStr = "";
-        // Handle ISO (Go default) or Custom format
         if(l.timestamp && l.timestamp.includes("T")) {
             dateStr = l.timestamp.split("T")[0];
         } else if (l.timestamp) {
-            // Try DD-MM-YYYY
+            // Handle custom DD-MM-YYYY
             const parts = l.timestamp.split('-');
             if(parts.length >= 3) dateStr = `${parts[2]}-${parts[1]}-${parts[0]}`; 
         }

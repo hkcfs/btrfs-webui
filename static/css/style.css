@@ -277,3 +277,87 @@ tr.snap-row:hover td { background-color: var(--bg-app); }
 .bg-warn { background: var(--warning); }
 .text-success { color: var(--success); }
 .text-fail { color: var(--danger); }
+
+/* --- FIXED CALENDAR STYLES --- */
+
+/* Badge Style for Mini Widget */
+.badge {
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    display: inline-block;
+}
+.badge-success { background: rgba(0, 200, 83, 0.15); color: #00c853; border: 1px solid rgba(0, 200, 83, 0.3); }
+.badge-fail { background: rgba(255, 51, 51, 0.15); color: #ff3333; border: 1px solid rgba(255, 51, 51, 0.3); }
+
+/* Full Calendar Grid Fix */
+.cal-grid {
+    display: grid !important; /* Force Grid */
+    grid-template-columns: repeat(7, 1fr) !important; /* Force 7 Columns */
+    gap: 1px;
+    background: var(--border); /* Lines between cells */
+    border: 1px solid var(--border);
+    margin-top: 10px;
+}
+
+.cal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+    padding: 0 10px;
+}
+
+.cal-day-header {
+    background: var(--bg-card);
+    text-align: center;
+    padding: 10px 0;
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    font-weight: bold;
+}
+
+.cal-day {
+    background: var(--bg-app); /* Content background */
+    min-height: 100px;
+    padding: 8px;
+    position: relative;
+    transition: 0.2s;
+}
+
+.cal-day:hover { background: var(--bg-panel); }
+
+.cal-day-num {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+}
+
+.cal-today {
+    background: rgba(255, 77, 0, 0.05);
+    box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.cal-dots {
+    margin-top: 25px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+.cal-event-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+    display: inline-block;
+}
+.bg-success { background-color: var(--success); }
+.bg-fail { background-color: var(--danger); }
+
+/* Force modal body to allow scrolling if calendar is tall */
+.modal-body { overflow-x: hidden; }
