@@ -20,26 +20,22 @@ var cronRunner *cron.Cron
 var cronIDs map[string]cron.EntryID
 
 func main() {
-	// 1. Load State
 	core.LoadState()
 	
-	// 2. Start Scheduler
 	cronRunner = cron.New()
 	cronIDs = make(map[string]cron.EntryID)
 	cronRunner.Start()
 	refreshSchedules()
 
-	// 3. Check for missed snapshots (Logic restored)
 	go checkMissedSnapshots()
 
-	// 4. Setup Routing
 	mux := http.NewServeMux()
 
-	// Static Files (Routing fixed)
+	// Static Files
 	fs := http.FileServer(http.Dir("./static"))
 	mux.Handle("/static/", http.StripPrefix("/static/", fs))
 
-	// Root Handler
+	// Root
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/" && r.URL.Path != "/index.html" {
 			http.NotFound(w, r)
@@ -48,15 +44,14 @@ func main() {
 		http.ServeFile(w, r, "static/index.html")
 	})
 
-	// Auth API
+	// Auth
 	mux.HandleFunc("/api/login", features.HandleLogin)
 
-	// App APIs
+	// API
 	mux.HandleFunc("/api/config", handleConfig)
 	mux.HandleFunc("/api/history", handleHistory)
 	mux.HandleFunc("/api/logs/clear", handleClearLogs)
 	
-	// Features
 	mux.HandleFunc("/api/storage/usage", features.HandleStorageUsage)
 	mux.HandleFunc("/api/health/smart", features.HandleSmartData)
 	mux.HandleFunc("/api/health/test", features.HandleSmartTest)
@@ -64,7 +59,6 @@ func main() {
 	mux.HandleFunc("/api/browser/list", features.HandleBrowserList)
 	mux.HandleFunc("/api/browser/download", features.HandleBrowserDownload)
 	
-	// Snapshots & Actions
 	mux.HandleFunc("/api/snapshots/list", features.HandleListSnapshots)
 	mux.HandleFunc("/api/snapshots/stats", features.HandleJobStats)
 	mux.HandleFunc("/api/snapshots/delete", features.HandleDeleteSnapshot)
@@ -73,7 +67,6 @@ func main() {
 	
 	mux.HandleFunc("/api/action/", handleGenericAction)
 
-	// Auth Middleware
 	handler := features.AuthMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		mux.ServeHTTP(w, r)
 	})
@@ -84,10 +77,10 @@ func main() {
 	log.Fatal(http.ListenAndServe(":"+port, handler))
 }
 
-// --- Scheduler Logic (Restored) ---
+// --- Scheduler Logic ---
 
 func checkMissedSnapshots() {
-	time.Sleep(3 * time.Second) // Wait for system to settle
+	time.Sleep(3 * time.Second)
 	core.State.Mu.Lock()
 	jobs := core.State.Config.Jobs
 	core.State.Mu.Unlock()
@@ -98,25 +91,21 @@ func checkMissedSnapshots() {
 		val, _ := strconv.Atoi(job.Schedule.Value)
 		if val == 0 { val = 1 }
 		var duration time.Duration
+		
+		// Logic here was already correct (using math), but good to double check
 		switch job.Schedule.Unit {
 		case "minutes": duration = time.Duration(val) * time.Minute
 		case "hours": duration = time.Duration(val) * time.Hour
 		case "days": duration = time.Duration(val) * 24 * time.Hour
 		}
 
-		core.PrintConsole("DEBUG", "Checking job '%s' for missed snapshots (Interval: %s)...", job.Name, duration)
-
 		entries, err := os.ReadDir(job.Dest)
-		if err != nil { 
-			core.PrintConsole("ERROR", "Could not read dest %s: %v", job.Dest, err)
-			continue 
-		}
+		if err != nil { continue }
 
 		var lastTime time.Time
 		found := false
 		for _, e := range entries {
 			if e.IsDir() {
-				// Use the parsed time helper
 				t := features.ParseSnapshotTime(e)
 				if t.After(lastTime) {
 					lastTime = t
@@ -129,12 +118,9 @@ func checkMissedSnapshots() {
 			core.PrintConsole("CATCHUP", "Job '%s': No snapshots found. Triggering initial backup.", job.Name)
 			features.PerformBackupJob(job)
 		} else {
-			gap := time.Since(lastTime)
-			if gap > duration {
-				core.PrintConsole("CATCHUP", "Job '%s': Last snapshot was %s ago (Threshold: %s). Triggering CATCHUP.", job.Name, gap, duration)
+			if time.Since(lastTime) > duration {
+				core.PrintConsole("CATCHUP", "Job '%s' missed schedule. Triggering now.", job.Name)
 				features.PerformBackupJob(job)
-			} else {
-				core.PrintConsole("DEBUG", "Job '%s': Up to date. Last snapshot was %s ago.", job.Name, gap)
 			}
 		}
 	}
@@ -148,18 +134,36 @@ func refreshSchedules() {
 
 	schedule := func(name, spec string, job func()) {
 		id, err := cronRunner.AddFunc(spec, job)
-		if err == nil { cronIDs[name] = id; core.PrintConsole("DEFAULT", "Scheduled %s: %s", name, spec) }
+		if err == nil { 
+			cronIDs[name] = id
+			core.PrintConsole("DEFAULT", "Scheduled %s: %s", name, spec) 
+		} else {
+			core.PrintConsole("ERROR", "Failed to schedule %s (%s): %v", name, spec, err)
+		}
 	}
 
 	for _, job := range core.State.Config.Jobs {
 		if job.Schedule.Enabled {
 			spec := job.Schedule.Value 
+			
 			if job.Schedule.Type == "every_x" { 
-				unit := "m"
-				if job.Schedule.Unit == "hours" { unit = "h" }
-				if job.Schedule.Unit == "days" { unit = "d" }
-				spec = "@every " + job.Schedule.Value + unit
+				val, _ := strconv.Atoi(job.Schedule.Value)
+				if val <= 0 { val = 1 }
+
+				// FIX: Convert Days to Hours because "@every 1d" is invalid in Go
+				if job.Schedule.Unit == "days" { 
+					// 3 days -> 72h
+					hours := val * 24
+					spec = fmt.Sprintf("@every %dh", hours)
+				} else {
+					unit := "m"
+					if job.Schedule.Unit == "hours" { unit = "h" }
+					// "minutes" -> "m"
+					spec = fmt.Sprintf("@every %d%s", val, unit)
+				}
 			}
+			// If type is "cron", we use the value as-is (e.g. "0 2 * * *")
+			
 			j := job
 			schedule("job_"+j.ID, spec, func() { go features.PerformBackupJob(j) })
 		}
