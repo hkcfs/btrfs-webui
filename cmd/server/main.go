@@ -9,7 +9,6 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 
@@ -31,11 +30,9 @@ func main() {
 
 	mux := http.NewServeMux()
 
-	// Static Files
 	fs := http.FileServer(http.Dir("./static"))
 	mux.Handle("/static/", http.StripPrefix("/static/", fs))
 
-	// Root
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/" && r.URL.Path != "/index.html" {
 			http.NotFound(w, r)
@@ -44,13 +41,13 @@ func main() {
 		http.ServeFile(w, r, "static/index.html")
 	})
 
-	// Auth
 	mux.HandleFunc("/api/login", features.HandleLogin)
-
-	// API
 	mux.HandleFunc("/api/config", handleConfig)
 	mux.HandleFunc("/api/history", handleHistory)
 	mux.HandleFunc("/api/logs/clear", handleClearLogs)
+	
+	// NEW: Endpoint to get next run times
+	mux.HandleFunc("/api/jobs/status", handleJobStatus)
 	
 	mux.HandleFunc("/api/storage/usage", features.HandleStorageUsage)
 	mux.HandleFunc("/api/health/smart", features.HandleSmartData)
@@ -91,8 +88,6 @@ func checkMissedSnapshots() {
 		val, _ := strconv.Atoi(job.Schedule.Value)
 		if val == 0 { val = 1 }
 		var duration time.Duration
-		
-		// Logic here was already correct (using math), but good to double check
 		switch job.Schedule.Unit {
 		case "minutes": duration = time.Duration(val) * time.Minute
 		case "hours": duration = time.Duration(val) * time.Hour
@@ -145,25 +140,18 @@ func refreshSchedules() {
 	for _, job := range core.State.Config.Jobs {
 		if job.Schedule.Enabled {
 			spec := job.Schedule.Value 
-			
 			if job.Schedule.Type == "every_x" { 
 				val, _ := strconv.Atoi(job.Schedule.Value)
 				if val <= 0 { val = 1 }
-
-				// FIX: Convert Days to Hours because "@every 1d" is invalid in Go
 				if job.Schedule.Unit == "days" { 
-					// 3 days -> 72h
 					hours := val * 24
 					spec = fmt.Sprintf("@every %dh", hours)
 				} else {
 					unit := "m"
 					if job.Schedule.Unit == "hours" { unit = "h" }
-					// "minutes" -> "m"
 					spec = fmt.Sprintf("@every %d%s", val, unit)
 				}
 			}
-			// If type is "cron", we use the value as-is (e.g. "0 2 * * *")
-			
 			j := job
 			schedule("job_"+j.ID, spec, func() { go features.PerformBackupJob(j) })
 		}
@@ -171,6 +159,26 @@ func refreshSchedules() {
 }
 
 // --- Handlers ---
+
+// Returns Next Run time for all jobs
+func handleJobStatus(w http.ResponseWriter, r *http.Request) {
+	core.State.Mu.Lock()
+	defer core.State.Mu.Unlock()
+	
+	status := make(map[string]interface{})
+	
+	for _, job := range core.State.Config.Jobs {
+		key := "job_" + job.ID
+		if eid, exists := cronIDs[key]; exists {
+			entry := cronRunner.Entry(eid)
+			status[job.ID] = entry.Next // Returns standard ISO time
+		} else {
+			status[job.ID] = nil // Disabled or not scheduled
+		}
+	}
+	
+	json.NewEncoder(w).Encode(status)
+}
 
 func handleConfig(w http.ResponseWriter, r *http.Request) {
 	core.State.Mu.Lock()
