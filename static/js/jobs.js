@@ -14,28 +14,38 @@ export function renderJobs() {
     
     if(appConfig.jobs) {
         html += appConfig.jobs.map((j, i) => {
-            // Display Logic for Cron vs Interval
-            let sched = "Disabled";
+            // RESTORED: Display Logic for Cron vs Interval
+            let sched = "Manual";
             if(j.schedule.enabled) {
                 if(j.schedule.type === 'cron') sched = `Cron: ${j.schedule.value}`;
                 else sched = `Every ${j.schedule.value} ${j.schedule.unit}`;
             }
             
+            const ret = j.retention.enabled 
+                ? `Keep ${j.retention.value} ${j.retention.mode === 'time' ? j.retention.unit : 'Snaps'}` 
+                : 'Unlimited';
+
+            // Trigger stats & timer loading
             setTimeout(() => loadJobStats(j.id), 200);
+            setTimeout(() => loadNextRunTime(), 500);
 
             return `
             <div class="card">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+                <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:20px;">
                     <div style="font-size:1.1rem; font-weight:700; color:var(--text-main)">
                         <span style="color:var(--accent)">//</span> ${j.name}
                     </div>
-                    <div style="width:8px; height:8px; background:var(--success); border-radius:50%; box-shadow:0 0 5px var(--success)"></div>
+                    <div class="status-container">
+                        <div style="width:8px; height:8px; background:var(--success); border-radius:50%; box-shadow:0 0 5px var(--success); margin-bottom:2px;"></div>
+                        <div id="next-run-${j.id}" class="next-run-text">--</div>
+                    </div>
                 </div>
                 
                 <div style="font-family:monospace; color:var(--text-muted); font-size:0.85rem; margin-bottom:20px; flex:1">
                     <div style="margin-bottom:5px">SRC: ${shortPath(j.source)}</div>
                     <div style="margin-bottom:5px">DST: ${shortPath(j.dest)}</div>
                     <div>SCH: ${sched}</div>
+                    <div>RET: ${ret}</div>
                 </div>
 
                 <div id="stats-${j.id}" style="border-top:1px solid var(--border); padding-top:15px; margin-bottom:15px; display:flex; justify-content:space-between; font-size:0.8rem; color:var(--text-muted)">
@@ -68,6 +78,46 @@ function shortPath(path) {
     return path.length > 20 ? '...'+path.slice(-20) : path;
 }
 
+// Next Run Timer Logic
+async function loadNextRunTime() {
+    try {
+        const res = await fetch(`${API}/jobs/status`);
+        const data = await res.json();
+        
+        for (const [jobId, nextTimeStr] of Object.entries(data)) {
+            const el = document.getElementById(`next-run-${jobId}`);
+            if (el) {
+                if (!nextTimeStr) {
+                    el.innerText = "Paused";
+                    el.style.color = "var(--text-muted)";
+                } else {
+                    const nextTime = new Date(nextTimeStr);
+                    const now = new Date();
+                    const diffMs = nextTime - now;
+                    
+                    if (diffMs > 0) {
+                        el.innerText = "in " + formatDuration(diffMs);
+                        el.style.color = "var(--accent)";
+                    } else {
+                        el.innerText = "Running...";
+                        el.style.color = "var(--run)";
+                    }
+                }
+            }
+        }
+    } catch(e) { console.error("Sched load failed", e); }
+}
+
+function formatDuration(ms) {
+    const min = 60 * 1000;
+    const hr = 60 * min;
+    const day = 24 * hr;
+
+    if (ms < hr) return Math.ceil(ms / min) + "m";
+    if (ms < day) return Math.floor(ms / hr) + "h " + Math.ceil((ms % hr) / min) + "m";
+    return Math.floor(ms / day) + "d " + Math.floor((ms % day) / hr) + "h";
+}
+
 async function loadJobStats(jobId) {
     try {
         const res = await fetch(`${API}/snapshots/stats?job_id=${jobId}`);
@@ -98,9 +148,9 @@ export function editJob(idx) {
         document.getElementById('j_src').value = j.source;
         document.getElementById('j_dest').value = j.dest;
         
-        // Schedule Config
         document.getElementById('j_sched_en').checked = j.schedule.enabled;
         document.getElementById('j_sched_type').value = j.schedule.type || 'every_x';
+        
         if(j.schedule.type === 'cron') {
             document.getElementById('j_sched_cron').value = j.schedule.value;
         } else {
@@ -108,13 +158,11 @@ export function editJob(idx) {
             document.getElementById('j_sched_unit').value = j.schedule.unit;
         }
         
-        // Retention
         document.getElementById('j_ret_en').checked = j.retention.enabled;
         document.getElementById('j_ret_mode').value = j.retention.mode;
         document.getElementById('j_ret_val').value = j.retention.value;
         document.getElementById('j_ret_unit').value = j.retention.unit;
         
-        // Advanced
         document.getElementById('j_pre').value = j.pre_command || "";
         document.getElementById('j_post').value = j.post_command || "";
         document.getElementById('j_repl_en').checked = j.replication?.enabled || false;
@@ -125,8 +173,8 @@ export function editJob(idx) {
     }
 }
 
-// Global exports for UI onclicks
-window.toggleJobSchedUI = () => {
+// RESTORED: Toggle Logic for Schedule UI
+export function toggleJobSchedUI() {
     const type = document.getElementById('j_sched_type').value;
     if(type === 'cron') {
         document.getElementById('sched_interval_ui').style.display = 'none';
@@ -142,7 +190,7 @@ export function saveJobForm(e) {
     const id = document.getElementById('j_id').value;
     const schedType = document.getElementById('j_sched_type').value;
     
-    // Determine Schedule Value based on Type
+    // Logic to grab correct value based on type
     let schedVal = document.getElementById('j_sched_val').value;
     if(schedType === 'cron') schedVal = document.getElementById('j_sched_cron').value;
 
@@ -155,7 +203,7 @@ export function saveJobForm(e) {
             enabled: document.getElementById('j_sched_en').checked,
             type: schedType,
             value: schedVal,
-            unit: document.getElementById('j_sched_unit').value, // irrelevant if cron
+            unit: document.getElementById('j_sched_unit').value,
         },
         retention: {
             enabled: document.getElementById('j_ret_en').checked,
@@ -214,12 +262,8 @@ export async function viewSnapshots(jobId) {
     const rows = list.map(s => `
         <tr class="snap-row">
             <td style="width:30px; text-align:center;"><input type="checkbox" onchange="window.selectSnap(this, '${s.path}')"></td>
-            <td>
-                <div style="font-weight:600; font-size:0.95rem;">${s.date}</div>
-            </td>
-            <td style="font-family:monospace; font-size:0.8rem; opacity:0.6; overflow:hidden; text-overflow:ellipsis; max-width:200px;">
-                ${s.name}
-            </td>
+            <td style="font-weight:600; font-size:0.95rem;">${s.date}</td>
+            <td style="font-family:monospace; font-size:0.8rem; opacity:0.6; overflow:hidden; text-overflow:ellipsis; max-width:200px;">${s.name}</td>
             <td style="text-align:right;">
                 <button class="btn btn-sm btn-sec" onclick="window.rollback('${s.path}')" title="Restore">♻️</button>
                 <button class="btn btn-sm btn-sec" onclick="window.browse('${s.path}')" title="Browse">📂</button>

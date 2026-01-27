@@ -361,3 +361,17 @@ tr.snap-row:hover td { background-color: var(--bg-app); }
 
 /* Force modal body to allow scrolling if calendar is tall */
 .modal-body { overflow-x: hidden; }
+
+/* New Style for Time Left under Green Dot */
+.next-run-text {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    margin-top: 3px;
+    text-align: right;
+    font-family: monospace;
+}
+.status-container {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+}
