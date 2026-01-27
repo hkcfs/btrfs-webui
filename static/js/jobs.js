@@ -5,6 +5,8 @@ import { browse, download } from './browser.js';
 
 let currentJobId = "";
 let selectedSnaps = [];
+let nextRunData = {}; // Stores target timestamps
+let timerInterval = null;
 
 export function renderJobs() {
     const list = document.getElementById('jobList');
@@ -14,7 +16,6 @@ export function renderJobs() {
     
     if(appConfig.jobs) {
         html += appConfig.jobs.map((j, i) => {
-            // RESTORED: Display Logic for Cron vs Interval
             let sched = "Manual";
             if(j.schedule.enabled) {
                 if(j.schedule.type === 'cron') sched = `Cron: ${j.schedule.value}`;
@@ -25,9 +26,7 @@ export function renderJobs() {
                 ? `Keep ${j.retention.value} ${j.retention.mode === 'time' ? j.retention.unit : 'Snaps'}` 
                 : 'Unlimited';
 
-            // Trigger stats & timer loading
             setTimeout(() => loadJobStats(j.id), 200);
-            setTimeout(() => loadNextRunTime(), 500);
 
             return `
             <div class="card">
@@ -71,6 +70,9 @@ export function renderJobs() {
     `;
 
     list.innerHTML = html;
+    
+    // Initialize timer logic
+    loadNextRunTime();
 }
 
 function shortPath(path) {
@@ -78,44 +80,60 @@ function shortPath(path) {
     return path.length > 20 ? '...'+path.slice(-20) : path;
 }
 
-// Next Run Timer Logic
+// 1. Fetch Data
 async function loadNextRunTime() {
     try {
         const res = await fetch(`${API}/jobs/status`);
         const data = await res.json();
+        nextRunData = data; // Store globally
         
-        for (const [jobId, nextTimeStr] of Object.entries(data)) {
-            const el = document.getElementById(`next-run-${jobId}`);
-            if (el) {
-                if (!nextTimeStr) {
-                    el.innerText = "Paused";
-                    el.style.color = "var(--text-muted)";
-                } else {
-                    const nextTime = new Date(nextTimeStr);
-                    const now = new Date();
-                    const diffMs = nextTime - now;
-                    
-                    if (diffMs > 0) {
-                        el.innerText = "in " + formatDuration(diffMs);
-                        el.style.color = "var(--accent)";
-                    } else {
-                        el.innerText = "Running...";
-                        el.style.color = "var(--run)";
-                    }
-                }
-            }
+        updateCountdowns(); // Run immediately
+        
+        // Start ticker if not running
+        if (!timerInterval) {
+            timerInterval = setInterval(updateCountdowns, 1000);
         }
     } catch(e) { console.error("Sched load failed", e); }
 }
 
-function formatDuration(ms) {
-    const min = 60 * 1000;
-    const hr = 60 * min;
-    const day = 24 * hr;
+// 2. Ticker Function (Runs every second)
+function updateCountdowns() {
+    const now = new Date();
+    
+    for (const [jobId, nextTimeStr] of Object.entries(nextRunData)) {
+        const el = document.getElementById(`next-run-${jobId}`);
+        if (el) {
+            if (!nextTimeStr) {
+                el.innerText = "Paused";
+                el.style.color = "var(--text-muted)";
+            } else {
+                const nextTime = new Date(nextTimeStr);
+                const diffMs = nextTime - now;
+                
+                if (diffMs > 0) {
+                    el.innerText = "in " + formatDuration(diffMs);
+                    el.style.color = "var(--accent)";
+                } else {
+                    el.innerText = "Running...";
+                    el.style.color = "var(--run)";
+                    // Optional: reload data if it just hit 0 to get next schedule
+                    if (diffMs > -2000 && diffMs < 0) loadNextRunTime();
+                }
+            }
+        }
+    }
+}
 
-    if (ms < hr) return Math.ceil(ms / min) + "m";
-    if (ms < day) return Math.floor(ms / hr) + "h " + Math.ceil((ms % hr) / min) + "m";
-    return Math.floor(ms / day) + "d " + Math.floor((ms % day) / hr) + "h";
+function formatDuration(ms) {
+    const s = 1000;
+    const m = 60 * s;
+    const h = 60 * m;
+    const d = 24 * h;
+
+    if (ms < m) return Math.ceil(ms / s) + "s";
+    if (ms < h) return Math.floor(ms / m) + "m " + Math.ceil((ms % m) / s) + "s";
+    if (ms < d) return Math.floor(ms / h) + "h " + Math.floor((ms % h) / m) + "m " + Math.ceil((ms % m) / s) + "s";
+    return Math.floor(ms / d) + "d " + Math.floor((ms % d) / h) + "h";
 }
 
 async function loadJobStats(jobId) {
@@ -173,7 +191,6 @@ export function editJob(idx) {
     }
 }
 
-// RESTORED: Toggle Logic for Schedule UI
 export function toggleJobSchedUI() {
     const type = document.getElementById('j_sched_type').value;
     if(type === 'cron') {
@@ -190,7 +207,6 @@ export function saveJobForm(e) {
     const id = document.getElementById('j_id').value;
     const schedType = document.getElementById('j_sched_type').value;
     
-    // Logic to grab correct value based on type
     let schedVal = document.getElementById('j_sched_val').value;
     if(schedType === 'cron') schedVal = document.getElementById('j_sched_cron').value;
 
