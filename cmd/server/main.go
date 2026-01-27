@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv" 
 	"strings"
 	"time"
 
@@ -160,7 +161,6 @@ func refreshSchedules() {
 
 // --- Handlers ---
 
-// Returns Next Run time for all jobs
 func handleJobStatus(w http.ResponseWriter, r *http.Request) {
 	core.State.Mu.Lock()
 	defer core.State.Mu.Unlock()
@@ -171,9 +171,9 @@ func handleJobStatus(w http.ResponseWriter, r *http.Request) {
 		key := "job_" + job.ID
 		if eid, exists := cronIDs[key]; exists {
 			entry := cronRunner.Entry(eid)
-			status[job.ID] = entry.Next // Returns standard ISO time
+			status[job.ID] = entry.Next
 		} else {
-			status[job.ID] = nil // Disabled or not scheduled
+			status[job.ID] = nil
 		}
 	}
 	
