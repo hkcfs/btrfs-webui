@@ -17,15 +17,10 @@ import (
 	"github.com/robfig/cron/v3"
 )
 
-var (
-	cronRunner *cron.Cron
-	cronIDs    map[string]cron.EntryID
-	
-	// NEW: Track when the "First Run" will happen if it's currently waiting
-	// This allows the UI to show the correct time even before the Cron job is officially registered
-	pendingRunTimes   map[string]time.Time 
-	pendingRunTimesMu sync.Mutex
-)
+var cronRunner *cron.Cron
+var cronIDs map[string]cron.EntryID
+var pendingRunTimes map[string]time.Time 
+var pendingRunTimesMu sync.Mutex
 
 func main() {
 	core.LoadState()
@@ -35,8 +30,6 @@ func main() {
 	pendingRunTimes = make(map[string]time.Time)
 	
 	cronRunner.Start()
-	
-	// This replaces the old simple scheduler AND the missed snapshot check
 	smartScheduleJobs()
 
 	mux := http.NewServeMux()
@@ -56,8 +49,7 @@ func main() {
 	mux.HandleFunc("/api/config", handleConfig)
 	mux.HandleFunc("/api/history", handleHistory)
 	mux.HandleFunc("/api/logs/clear", handleClearLogs)
-	
-	mux.HandleFunc("/api/jobs/status", handleJobStatus) // Returns merged Pending + Cron times
+	mux.HandleFunc("/api/jobs/status", handleJobStatus)
 	
 	mux.HandleFunc("/api/storage/usage", features.HandleStorageUsage)
 	mux.HandleFunc("/api/health/smart", features.HandleSmartData)
@@ -90,7 +82,6 @@ func smartScheduleJobs() {
 	core.State.Mu.Lock()
 	defer core.State.Mu.Unlock()
 	
-	// Clear existing
 	for _, id := range cronIDs { cronRunner.Remove(id) }
 	cronIDs = make(map[string]cron.EntryID)
 	
@@ -101,7 +92,6 @@ func smartScheduleJobs() {
 	for _, job := range core.State.Config.Jobs {
 		if !job.Schedule.Enabled { continue }
 
-		// 1. Calculate the Interval Duration
 		val, _ := strconv.Atoi(job.Schedule.Value)
 		if val <= 0 { val = 1 }
 		var interval time.Duration
@@ -120,72 +110,53 @@ func smartScheduleJobs() {
 				cronSpec = fmt.Sprintf("@every %dh", val * 24)
 			}
 		} else {
-			// If Raw Cron, we can't calculate "Time Since" easily, so we just register it
-			// (Limitation of standard Cron strings)
 			addRecurringJob(job, job.Schedule.Value)
 			continue
 		}
 
-		// 2. Find Last Snapshot Time from Disk
 		lastSnapTime := getLastSnapshotTime(job.Dest)
-		
-		// 3. Calculate Logic
 		now := time.Now()
 		
+		core.PrintConsole("DEBUG", "Job '%s' (Interval: %s). Last Snap Detected: %s", job.Name, interval, lastSnapTime.Format(time.RFC3339))
+		
 		if lastSnapTime.IsZero() {
-			// Case A: Never backed up. Run Immediately.
-			core.PrintConsole("SCHEDULER", "Job %s: No history. Running Initial.", job.Name)
+			core.PrintConsole("SCHEDULER", "Job %s: No valid history found. Running Initial.", job.Name)
 			go runAndSchedule(job, cronSpec)
 		} else {
 			nextDue := lastSnapTime.Add(interval)
 			timeUntil := nextDue.Sub(now)
 
 			if timeUntil <= 0 {
-				// Case B: Overdue (Missed while offline). Run Immediately.
 				core.PrintConsole("SCHEDULER", "Job %s: Overdue by %s. Running Catch-up.", job.Name, (-timeUntil).String())
 				go runAndSchedule(job, cronSpec)
 			} else {
-				// Case C: Waiting Period (Persistence Logic).
-				// We wait 'timeUntil', then Run, then Start Cron.
 				core.PrintConsole("SCHEDULER", "Job %s: Resuming schedule. Next run in %s", job.Name, timeUntil.Round(time.Second))
-				
-				// Update Status Map so UI sees it
 				pendingRunTimesMu.Lock()
 				pendingRunTimes[job.ID] = nextDue
 				pendingRunTimesMu.Unlock()
-
-				time.AfterFunc(timeUntil, func() {
-					runAndSchedule(job, cronSpec)
-				})
+				time.AfterFunc(timeUntil, func() { runAndSchedule(job, cronSpec) })
 			}
 		}
 	}
 }
 
-// Helper: Runs the job once, THEN registers the recurring loop
 func runAndSchedule(job config.BackupJob, spec string) {
-	// 1. Run the job
 	features.PerformBackupJob(job)
-	
-	// 2. Clear pending status
 	pendingRunTimesMu.Lock()
 	delete(pendingRunTimes, job.ID)
 	pendingRunTimesMu.Unlock()
+	addRecurringJob(job, spec)
+}
 
-	// 3. Add to Cron for future loops
-	core.State.Mu.Lock() // Need lock to read/write cronIDs safely if called from goroutine
+func addRecurringJob(job config.BackupJob, spec string) {
+	core.State.Mu.Lock()
 	defer core.State.Mu.Unlock()
-	
-	// Avoid double registration if logic races (rare but safe)
 	if _, exists := cronIDs["job_"+job.ID]; exists { return }
 
-	id, err := cronRunner.AddFunc(spec, func() { 
-		go features.PerformBackupJob(job) 
-	})
-	
+	id, err := cronRunner.AddFunc(spec, func() { go features.PerformBackupJob(job) })
 	if err == nil {
 		cronIDs["job_"+job.ID] = id
-		core.PrintConsole("SCHEDULER", "Job %s: Registered recurring loop (%s)", job.Name, spec)
+		core.PrintConsole("SCHEDULER", "Job %s: Recurring loop active (%s)", job.Name, spec)
 	} else {
 		core.PrintConsole("ERROR", "Job %s: Cron failed %v", job.Name, err)
 	}
@@ -193,47 +164,34 @@ func runAndSchedule(job config.BackupJob, spec string) {
 
 func getLastSnapshotTime(dest string) time.Time {
 	entries, err := os.ReadDir(dest)
-	if err != nil { return time.Time{} } // Return zero time
+	if err != nil { return time.Time{} }
 
 	var newest time.Time
 	for _, e := range entries {
 		if e.IsDir() {
-			t := features.ParseSnapshotTime(e) // Reuse existing feature parser
-			if t.After(newest) {
-				newest = t
-			}
+			t := features.ParseSnapshotTime(e)
+			if t.After(newest) { newest = t }
 		}
 	}
 	return newest
 }
 
 // --- Handlers ---
-
 func handleJobStatus(w http.ResponseWriter, r *http.Request) {
 	core.State.Mu.Lock()
-	// Copy jobs config to avoid holding lock too long
 	jobs := core.State.Config.Jobs
 	core.State.Mu.Unlock()
 	
 	status := make(map[string]interface{})
-	
 	pendingRunTimesMu.Lock()
 	defer pendingRunTimesMu.Unlock()
 
 	for _, job := range jobs {
-		// 1. Check if it's in the "Waiting / Pending" phase
 		if t, ok := pendingRunTimes[job.ID]; ok {
 			status[job.ID] = t
 			continue
 		}
-
-		// 2. Check if it's in the "Recurring Cron" phase
 		key := "job_" + job.ID
-		// We need to lock state again to access cronIDs safely or use the var directly if global
-		// Since we are in main package, we access global var directly, but we need sync?
-		// cronRunner is thread safe. cronIDs map read needs care.
-		// For simplicity in this patch, we assume single-thread access mostly or accept slight race on read.
-		// Better:
 		if eid, exists := cronIDs[key]; exists {
 			entry := cronRunner.Entry(eid)
 			status[job.ID] = entry.Next
@@ -241,7 +199,6 @@ func handleJobStatus(w http.ResponseWriter, r *http.Request) {
 			status[job.ID] = nil
 		}
 	}
-	
 	json.NewEncoder(w).Encode(status)
 }
 
@@ -253,15 +210,11 @@ func handleConfig(w http.ResponseWriter, r *http.Request) {
 		if err := json.NewDecoder(r.Body).Decode(&newConfig); err == nil {
 			core.State.Config = newConfig
 			core.SaveState()
-			// Re-calc schedules on save
 			go smartScheduleJobs()
 		}
 	}
 	json.NewEncoder(w).Encode(core.State.Config)
 }
-
-// ... Keep existing handlers (History, Logs, GenericAction, etc) ...
-// For brevity in the patch, I'm assuming the standard boilerplate below:
 
 func handleHistory(w http.ResponseWriter, r *http.Request) {
 	core.State.Mu.Lock()
@@ -336,7 +289,7 @@ func handleGenericAction(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "id": id})
 }
 
-// Dummy stub if needed, though replaced by smartScheduleJobs
+// Dummy stub if needed
 func refreshSchedules() {
 	smartScheduleJobs()
 }

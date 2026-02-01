@@ -16,20 +16,37 @@ import (
 
 // Supported Time Formats
 var TimeLayouts = []string{
-	"02-01-2006-15-04-MST", // The standard format used by this app
-	"2006-01-02-15-04-MST", 
+	"02-01-2006-15-04",       // Custom format (minus TZ)
+	"02-01-2006-15-04-MST",   // Legacy support
+	"2006-01-02-15-04-MST",   // ISO-like
 	time.RFC3339,
 }
 
-// Exported Helper: Try multiple formats or fallback to file mod time
+// Robust Parser: Ignores text suffix if standard parse fails
 func ParseSnapshotTime(e os.DirEntry) time.Time {
 	name := e.Name()
+	
+	// 1. Try standard layouts
 	for _, layout := range TimeLayouts {
-		if t, err := time.Parse(layout, name); err == nil {
+		if t, err := time.ParseInLocation(layout, name, time.Local); err == nil {
 			return t
 		}
 	}
-	// Fallback to File Info (Modification Time)
+
+	// 2. Try "Fuzzy" Parsing (Strip Timezone Suffix like -IST, -CET)
+	// Format: DD-MM-YYYY-HH-mm-TZ
+	// We want: DD-MM-YYYY-HH-mm
+	parts := strings.Split(name, "-")
+	if len(parts) >= 5 {
+		// Reconstruct the date/time part only (first 5 parts)
+		datePart := strings.Join(parts[:5], "-") 
+		layout := "02-01-2006-15-04"
+		if t, err := time.ParseInLocation(layout, datePart, time.Local); err == nil {
+			return t
+		}
+	}
+
+	// 3. Fallback to File Info (Modification Time)
 	info, _ := e.Info()
 	return info.ModTime()
 }
@@ -47,7 +64,11 @@ func HandleListSnapshots(w http.ResponseWriter, r *http.Request) {
 	if dest == "" { http.Error(w, "Job not found", 404); return }
 
 	entries, err := os.ReadDir(dest)
-	if err != nil { http.Error(w, err.Error(), 500); return }
+	if err != nil { 
+		core.PrintConsole("ERROR", "ReadDir failed: %v", err)
+		http.Error(w, err.Error(), 500)
+		return 
+	}
 
 	type SnapshotItem struct {
 		Name    string    `json:"name"`
@@ -180,7 +201,10 @@ func HandleDeleteSnapshot(w http.ResponseWriter, r *http.Request) {
 func PerformBackupJob(job config.BackupJob) {
 	os.MkdirAll(job.Dest, 0755)
 	now := time.Now()
-	name := now.Format(TimeLayouts[0])
+	// Use explicit naming format with TZ
+	tz, _ := now.Zone()
+	name := fmt.Sprintf("%s-%s", now.Format("02-01-2006-15-04"), tz)
+	
 	fullDest := filepath.Join(job.Dest, name)
 	
 	core.PrintConsole(config.LogLevelDefault, "Starting Job: %s", job.Name)
