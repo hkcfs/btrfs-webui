@@ -23,16 +23,18 @@ type LogEntry struct {
 }
 
 type AppState struct {
-	Config  config.GlobalConfig `json:"config"`
-	History []LogEntry          `json:"history"`
-	Mu      sync.Mutex
+	Config         config.GlobalConfig `json:"config"`
+	History        []LogEntry          `json:"history"`
+	LockedSnaps    map[string]bool     `json:"locked_snaps"` // Map of snapshot paths that are user-locked
+	Mu             sync.Mutex
 }
 
 var State = AppState{
 	Config: config.GlobalConfig{
 		LogLevel: config.LogLevelDefault,
 	},
-	History: []LogEntry{},
+	History:     []LogEntry{},
+	LockedSnaps: make(map[string]bool),
 }
 
 func PrintConsole(level string, msg string, args ...interface{}) {
@@ -49,6 +51,9 @@ func RunCommandAsync(opType, emoji, path, cmdName string, args ...string) int64 
 	entryID := time.Now().UnixNano()
 	cmdStr := fmt.Sprintf("%s %s", cmdName, strings.Join(args, " "))
 
+	PrintConsole(config.LogLevelVerbose, "[RUN] Creating async task: type=%s, id=%d, path=%s", opType, entryID, path)
+	PrintConsole(config.LogLevelVerbose, "[RUN] Command: %s", cmdStr)
+
 	entry := LogEntry{
 		ID:        entryID,
 		Type:      opType,
@@ -61,16 +66,33 @@ func RunCommandAsync(opType, emoji, path, cmdName string, args ...string) int64 
 	State.History = append([]LogEntry{entry}, State.History...)
 	State.Mu.Unlock()
 
+	PrintConsole(config.LogLevelVerbose, "[RUN] Task %d queued, starting execution goroutine", entryID)
+
 	go func() {
-		PrintConsole(config.LogLevelVerbose, "EXEC: %s", cmdStr)
+		PrintConsole(config.LogLevelVerbose, "[EXEC] Task %d - Starting: %s", entryID, cmdStr)
+		PrintConsole(config.LogLevelVerbose, "[EXEC] Task %d - Binary: %s, Args: %v", entryID, cmdName, args)
 		
 		cmd := exec.Command(cmdName, args...)
+		PrintConsole(config.LogLevelVerbose, "[EXEC] Task %d - Command object created, running...", entryID)
+		
 		output, err := cmd.CombinedOutput()
 		duration := time.Since(startTime).Round(time.Millisecond)
 		outputStr := string(output)
+		
+		outputLen := len(outputStr)
+		if outputLen > 500 {
+			PrintConsole(config.LogLevelVerbose, "[EXEC] Task %d - Output received (truncated): %s... [%d chars total]", entryID, outputStr[:500], outputLen)
+		} else {
+			PrintConsole(config.LogLevelVerbose, "[EXEC] Task %d - Output received: %s", entryID, outputStr)
+		}
 
 		status := "Success"
-		if err != nil { status = "Failed" }
+		if err != nil { 
+			status = "Failed" 
+			PrintConsole(config.LogLevelVerbose, "[EXEC] Task %d - Error: %v", entryID, err)
+		}
+
+		PrintConsole(config.LogLevelVerbose, "[EXEC] Task %d - Status: %s, Duration: %s", entryID, status, duration)
 
 		if status == "Failed" {
 			PrintConsole("ERROR", "%s Failed: %v", opType, err)
@@ -81,10 +103,11 @@ func RunCommandAsync(opType, emoji, path, cmdName string, args ...string) int64 
 		State.Mu.Lock()
 		defer State.Mu.Unlock()
 		
+		PrintConsole(config.LogLevelVerbose, "[SAVE] Task %d - Saving results to history", entryID)
+		
 		for i, e := range State.History {
 			if e.ID == entryID {
 				State.History[i].Duration = duration.String()
-				// Store Command + Output
 				State.History[i].Output = fmt.Sprintf("$ %s\n\n%s", cmdStr, outputStr)
 				
 				if err != nil {
@@ -98,10 +121,12 @@ func RunCommandAsync(opType, emoji, path, cmdName string, args ...string) int64 
 				} else {
 					State.History[i].Status = "Success"
 				}
+				PrintConsole(config.LogLevelVerbose, "[SAVE] Task %d - Updated history entry at index %d with status=%s", entryID, i, State.History[i].Status)
 				break
 			}
 		}
 		SaveState()
+		PrintConsole(config.LogLevelVerbose, "[SAVE] Task %d - State saved to disk", entryID)
 	}()
 	return entryID
 }
@@ -152,5 +177,6 @@ func LoadState() {
 		// --- NIL SLICE SAFETY (RESTORED) ---
 		if State.Config.Jobs == nil { State.Config.Jobs = []config.BackupJob{} }
 		if State.History == nil { State.History = []LogEntry{} }
+		if State.LockedSnaps == nil { State.LockedSnaps = make(map[string]bool) }
 	}
 }

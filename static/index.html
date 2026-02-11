@@ -166,9 +166,13 @@
                             </p>
                             <button class="btn" onclick="exportConfig()" style="width:100%">💾 Export Configuration (JSON)</button>
                             
-                            <div style="border: 1px dashed var(--border); padding: 15px; border-radius: 4px; margin-top:10px;">
-                                <label style="margin-bottom:10px">Restore Configuration</label>
-                                <input type="file" id="configImportFile" style="width:100%; border:none; background:transparent; padding:0" accept=".json" onchange="importConfig(this)">
+                            <div class="file-upload-area" onclick="document.getElementById('configImportFile').click()">
+                                <div class="file-upload-icon">📁</div>
+                                <div class="file-upload-text">
+                                    <strong>Click to select file</strong> or drag and drop
+                                </div>
+                                <div class="file-upload-hint">JSON files only</div>
+                                <input type="file" id="configImportFile" class="file-upload-input" accept=".json" onchange="importConfig(this)">
                             </div>
                         </div>
                         <span class="card-inner"></span>

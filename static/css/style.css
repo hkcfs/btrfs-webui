@@ -376,3 +376,59 @@ tr.snap-row:hover td { background-color: var(--bg-app); }
     flex-direction: column;
     align-items: flex-end;
 }
+
+/* --- FILE UPLOAD STYLING --- */
+.file-upload-area {
+    border: 2px dashed var(--border);
+    border-radius: 6px;
+    padding: 25px 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    background: var(--bg-app);
+    margin-top: 15px;
+    position: relative;
+    overflow: hidden;
+}
+
+.file-upload-area:hover {
+    border-color: var(--accent);
+    background: rgba(255, 77, 0, 0.05);
+}
+
+.file-upload-area:active {
+    background: rgba(255, 77, 0, 0.1);
+}
+
+.file-upload-icon {
+    font-size: 2rem;
+    margin-bottom: 10px;
+    opacity: 0.8;
+}
+
+.file-upload-text {
+    color: var(--text-main);
+    font-size: 0.9rem;
+    margin-bottom: 5px;
+}
+
+.file-upload-text strong {
+    color: var(--accent);
+}
+
+.file-upload-hint {
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.file-upload-input {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    cursor: pointer;
+}

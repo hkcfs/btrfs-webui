@@ -8,7 +8,7 @@ A lightweight, powerful web interface and scheduler for managing BTRFS filesyste
 *   **Multiple Backup Jobs:** Define multiple source/destination pairs with independent configurations.
 *   **Flexible Scheduling:** Use simple intervals (e.g., every 30 mins) or full Cron expressions.
 *   **Smart Retention:** Automatically clean up old snapshots based on count or time (Days/Weeks/Months/Years).
-*   **Immutable (Locked) Snapshots:** Toggle BTRFS Read-Only properties (🔒) to protect specific snapshots from the retention policy.
+*   **Immutable (Locked) Snapshots:** Click the 🔒 button to lock specific snapshots. Locked snapshots are protected from the retention policy and will be kept forever, regardless of your age or count limits. By default, all snapshots are eligible for deletion by retention policies unless you explicitly lock them.
 *   **Rollback & Recovery:** Instantly restore live data from any snapshot with automatic safety backups.
 *   **Snapshot Explorer:** Browse and download individual files directly from your snapshots without mounting them manually.
 *   **Visual Diff:** Compare two snapshots to see changed files (using `btrfs send` logic).
@@ -29,6 +29,7 @@ A lightweight, powerful web interface and scheduler for managing BTRFS filesyste
 *   **Replication:** Automated BTRFS replication via `send/receive` to secondary backup targets.
 *   **Config Import/Export:** Backup your entire setup (Jobs, Schedules, Settings) to a JSON file for easy recovery or migration.
 *   **Secure Access:** Optional password protection with session-based authentication.
+*   **Verbose Logging:** Set log level to VERBOSE for detailed debugging output of all operations.
 
 ---
 
@@ -75,6 +76,17 @@ Each Backup Job includes:
 - **Retention:** Define how many/how long to keep snapshots.
 - **Hooks:** Script triggers for integration with other tools.
 - **Replication:** Target path for `btrfs send`.
+
+### 3. Locked Snapshots
+- Click the 🔒 icon next to any snapshot to protect it from retention policies
+- Locked snapshots will never be deleted automatically
+- Click 🔓 to unlock and allow deletion again
+- Lock status is preserved across restarts
+
+### 4. Config Backup/Restore
+- **Export:** Download your complete configuration as JSON from the Settings page
+- **Import:** Upload a previously exported JSON file to restore all jobs and settings
+- Useful for migrating to a new server or disaster recovery
 
 ---
 
