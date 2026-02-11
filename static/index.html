@@ -157,6 +157,22 @@
                         </form>
                         <span class="card-inner"></span>
                     </div>
+
+                    <div class="card mt-20" style="max-width:600px">
+                        <h2>Data Migration</h2>
+                        <div class="flex-col">
+                            <p style="font-size:0.8rem; color:var(--text-muted); margin-bottom:10px;">
+                                Export your backup jobs and schedules to a JSON file. You can restore them later on a fresh installation.
+                            </p>
+                            <button class="btn" onclick="exportConfig()" style="width:100%">💾 Export Configuration (JSON)</button>
+                            
+                            <div style="border: 1px dashed var(--border); padding: 15px; border-radius: 4px; margin-top:10px;">
+                                <label style="margin-bottom:10px">Restore Configuration</label>
+                                <input type="file" id="configImportFile" style="width:100%; border:none; background:transparent; padding:0" accept=".json" onchange="importConfig(this)">
+                            </div>
+                        </div>
+                        <span class="card-inner"></span>
+                    </div>
                 </div>
             </div>
         </main>
