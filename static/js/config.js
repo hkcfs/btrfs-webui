@@ -53,6 +53,39 @@ export async function saveGlobalConfig(e) {
     await saveConfig();
 }
 
+export function exportConfig() {
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(appConfig, null, 2));
+    const downloadAnchorNode = document.createElement('a');
+    downloadAnchorNode.setAttribute("href", dataStr);
+    downloadAnchorNode.setAttribute("download", "btrfs_commander_config.json");
+    document.body.appendChild(downloadAnchorNode);
+    downloadAnchorNode.click();
+    downloadAnchorNode.remove();
+}
+
+export function importConfig(input) {
+    const file = input.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+        try {
+            const imported = JSON.parse(e.target.result);
+            if (!imported.jobs) throw new Error("Invalid config format");
+            
+            if (confirm("This will overwrite current jobs and settings. Proceed?")) {
+                appConfig = imported;
+                await fetch(`${API}/config`, { method: 'POST', body: JSON.stringify(appConfig) });
+                alert("Configuration Restored Successfully");
+                window.location.reload();
+            }
+        } catch (err) {
+            alert("Failed to import: " + err.message);
+        }
+    };
+    reader.readAsText(file);
+}
+
 function renderGlobalScheds() {
     const container = document.getElementById('globalScheds');
     if(!container) return;
