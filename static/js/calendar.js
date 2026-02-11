@@ -34,8 +34,18 @@ function renderMiniWidget() {
         
         // Determine Status
         const hasErrors = dayLogs.some(l => l.status.toLowerCase().includes("fail"));
-        const badgeClass = hasErrors ? "badge-fail" : "badge-success";
-        const badgeText = hasErrors ? `⚠ ERRORS (${count})` : `✔ OK (${count})`;
+        const hasMissed = dayLogs.some(l => l.status.toLowerCase().includes("missed"));
+        
+        let badgeClass = "badge-success";
+        let badgeText = `✔ OK (${count})`;
+        
+        if (hasErrors) {
+            badgeClass = "badge-fail";
+            badgeText = `⚠ ERRORS (${count})`;
+        } else if (hasMissed) {
+            badgeClass = "badge-warn";
+            badgeText = `⚠ MISSED (${count})`;
+        }
         
         // Format Date (e.g. "Jan 24")
         const dObj = new Date(date);
@@ -105,8 +115,10 @@ function renderFullCalendar() {
         
         let dots = "";
         dayLogs.forEach(l => {
-            const color = l.status.toLowerCase().includes("fail") ? 'bg-fail' : 'bg-success';
-            dots += `<span class="cal-event-dot ${color}" title="${l.type}"></span>`;
+            let color = 'bg-success';
+            if (l.status.toLowerCase().includes("fail")) color = 'bg-fail';
+            else if (l.status.toLowerCase().includes("missed")) color = 'bg-warn';
+            dots += `<span class="cal-event-dot ${color}" title="${l.type}: ${l.status}"></span>`;
         });
 
         grid.innerHTML += `

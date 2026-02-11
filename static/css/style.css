@@ -291,6 +291,7 @@ tr.snap-row:hover td { background-color: var(--bg-app); }
 }
 .badge-success { background: rgba(0, 200, 83, 0.15); color: #00c853; border: 1px solid rgba(0, 200, 83, 0.3); }
 .badge-fail { background: rgba(255, 51, 51, 0.15); color: #ff3333; border: 1px solid rgba(255, 51, 51, 0.3); }
+.badge-warn { background: rgba(255, 189, 0, 0.15); color: #ffbd00; border: 1px solid rgba(255, 189, 0, 0.3); }
 
 /* Full Calendar Grid Fix */
 .cal-grid {

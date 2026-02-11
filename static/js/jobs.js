@@ -278,9 +278,13 @@ export async function viewSnapshots(jobId) {
     const rows = list.map(s => `
         <tr class="snap-row">
             <td style="width:30px; text-align:center;"><input type="checkbox" onchange="window.selectSnap(this, '${s.path}')"></td>
-            <td style="font-weight:600; font-size:0.95rem;">${s.date}</td>
+            <td style="font-weight:600; font-size:0.95rem;">
+                ${s.locked ? '<span style="color:var(--accent)" title="Locked/Immutable">🔒</span> ' : ''}
+                ${s.date}
+            </td>
             <td style="font-family:monospace; font-size:0.8rem; opacity:0.6; overflow:hidden; text-overflow:ellipsis; max-width:200px;">${s.name}</td>
             <td style="text-align:right;">
+                <button class="btn btn-sm btn-sec" onclick="window.toggleLock('${s.path}', ${s.locked})" title="${s.locked ? 'Unlock' : 'Lock'}">${s.locked ? '🔓' : '🔒'}</button>
                 <button class="btn btn-sm btn-sec" onclick="window.rollback('${s.path}')" title="Restore">♻️</button>
                 <button class="btn btn-sm btn-sec" onclick="window.browse('${s.path}')" title="Browse">📂</button>
                 <button class="btn btn-sm btn-danger" onclick="window.delSnap('${s.path}')" title="Delete">🗑</button>
@@ -308,6 +312,15 @@ export async function compareSnapshots() {
     if(selectedSnaps.length !== 2) { alert("Select exactly 2 snapshots."); return; }
     const res = await fetch(`${API}/snapshots/diff?a=${encodeURIComponent(selectedSnaps[0])}&b=${encodeURIComponent(selectedSnaps[1])}`);
     pollLog((await res.json()).id);
+}
+export async function toggleLock(path, currentStatus) {
+    const newStatus = !currentStatus;
+    const res = await fetch(`${API}/snapshots/lock?path=${encodeURIComponent(path)}&lock=${newStatus}`);
+    if (res.ok) {
+        viewSnapshots(currentJobId);
+    } else {
+        alert("Failed to toggle lock. Check console for details.");
+    }
 }
 export async function delSnap(path) { if(confirm("Delete?")) { await fetch(`${API}/snapshots/delete?path=${encodeURIComponent(path)}`); viewSnapshots(currentJobId); loadJobStats(currentJobId); } }
 export async function rollback(path) { if(confirm("Overwrite live data?")) { await fetch(`${API}/snapshots/rollback?job_id=${currentJobId}&path=${encodeURIComponent(path)}`); alert("Rollback triggered"); loadLogs(); } }

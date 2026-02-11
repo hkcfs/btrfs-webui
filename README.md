@@ -1,131 +1,90 @@
+# BTRFS Commander
 
-***
+A lightweight, powerful web interface and scheduler for managing BTRFS filesystems. Monitor drive health, automate snapshots, and manage filesystem maintenance through a modern, responsive dashboard.
 
-# BTRFS Web Manager
+## 🚀 Key Features
 
-A lightweight, single-binary web interface and scheduler for managing BTRFS filesystems. This tool provides a dashboard to monitor, schedule, and execute BTRFS maintenance tasks such as snapshots, scrubs, balancing, and defragmentation.
+### 📸 Advanced Snapshot Management
+*   **Multiple Backup Jobs:** Define multiple source/destination pairs with independent configurations.
+*   **Flexible Scheduling:** Use simple intervals (e.g., every 30 mins) or full Cron expressions.
+*   **Smart Retention:** Automatically clean up old snapshots based on count or time (Days/Weeks/Months/Years).
+*   **Immutable (Locked) Snapshots:** Toggle BTRFS Read-Only properties (🔒) to protect specific snapshots from the retention policy.
+*   **Rollback & Recovery:** Instantly restore live data from any snapshot with automatic safety backups.
+*   **Snapshot Explorer:** Browse and download individual files directly from your snapshots without mounting them manually.
+*   **Visual Diff:** Compare two snapshots to see changed files (using `btrfs send` logic).
 
-It is designed to run as a Docker container or a standalone binary on Linux systems.
+### 🛠 Filesystem Maintenance
+*   **Scrub & Balance:** Schedule or manually trigger scrubs and balances to ensure data integrity and reclaim space.
+*   **Defragmentation:** Run recursive defragmentation on target drives.
+*   **Compression Analysis:** Integrated `compsize` support to view real-world compression ratios and savings.
 
-## Features
+### 🩺 Health & Monitoring
+*   **SMART Integration:** Monitor drive health and trigger Short/Long self-tests directly from the UI.
+*   **Error Tracking:** Real-time monitoring of BTRFS device stats (read/write/checksum errors).
+*   **Activity Calendar:** A full calendar view and dashboard mini-widget to track snapshot history and maintenance events.
+*   **Missed Job Alerts:** Visual indicators (orange/yellow) highlight when scheduled tasks were missed.
 
-*   **Snapshot Management**
-    *   Take immediate snapshots.
-    *   Schedule snapshots using intervals (e.g., every 15 minutes) or Cron expressions.
-    *   Automated Retention Policy: cleanup old snapshots based on count (e.g., keep last 10) or time (e.g., keep last 7 days).
-*   **Filesystem Maintenance**
-    *   **Scrub:** Schedule and trigger filesystem scrubs to verify data integrity.
-    *   **Balance:** Schedule and trigger balancing to reclaim unallocated space.
-    *   **Defragmentation:** Trigger recursive defragmentation on specific paths.
-    *   **Compression Analysis:** Run `compsize` to view compression savings and ratios.
-*   **Activity Logging**
-    *   Persistent history of all operations with success/failure status and full command output.
-    *   Real-time status updates for long-running operations.
-*   **User Interface**
-    *   Responsive, mobile-friendly web dashboard.
-    *   Dark/Light mode toggle (persisted in local storage).
-    *   No external dependencies (HTML/CSS embedded in binary).
+### ⚙️ Automation & Migration
+*   **Hooks:** Execute custom shell commands before or after snapshot jobs.
+*   **Replication:** Automated BTRFS replication via `send/receive` to secondary backup targets.
+*   **Config Import/Export:** Backup your entire setup (Jobs, Schedules, Settings) to a JSON file for easy recovery or migration.
+*   **Secure Access:** Optional password protection with session-based authentication.
 
-## Installation
+---
+
+## 📦 Installation
 
 ### Method 1: Docker (Recommended)
-
-Docker is the easiest way to run the manager. The container requires privileged mode to execute BTRFS commands on the host filesystem.
-
-1.  Create a `docker-compose.yml` file:
+The container requires `privileged` mode to execute BTRFS and SMART commands on the host.
 
 ```yaml
 services:
-  btrfs-manager:
-    image: ghcr.io/hkcfs/btrfs-manager:latest # Or build locally
-    container_name: btrfs_web_ui
+  btrfs-commander:
+    image: ghcr.io/hkcfs/btrfs-commander:latest
+    container_name: btrfs_commander
     privileged: true
-    network_mode: bridge
     environment:
-      - TZ=UTC  # Set your local timezone (e.g., America/New_York)
+      - TZ=UTC
+      - PORT=8080
+      - PASSWORD=your_secure_password # Optional
     volumes:
-      # Map the host root directory so the container can access drives
-      - /:/host
-      # Persist application logs and configuration
-      - ./data:/data
+      - /:/host           # Map host root to access drives
+      - ./data:/data      # Persist config and logs
     ports:
       - "8080:8080"
     restart: unless-stopped
 ```
 
-2.  Start the container:
-    ```bash
-    docker compose up -d
-    ```
-
-3.  Access the web interface at `http://localhost:8080`.
-
-**Note on Paths:** Because the host root is mounted to `/host` inside the container, you must configure your paths in the Web UI to start with `/host`.
-*   Example Host Path: `/mnt/data`
-*   Web UI Path: `/host/mnt/data`
-
 ### Method 2: Standalone Binary
+1. Download the latest release for your architecture.
+2. Ensure `btrfs-progs`, `smartmontools`, and `compsize` are installed on your host.
+3. Run with sudo: `sudo ./btrfs-commander`
 
-You can run the binary directly on your host machine without Docker.
+---
 
-**Prerequisites:**
-*   Linux OS
-*   `btrfs-progs` installed (for btrfs commands).
-*   `compsize` installed (optional, for compression analysis).
+## 🔧 Configuration
 
-**Installation:**
-1.  Download the latest release for your architecture (AMD64 or ARM64) from the Releases page.
-2.  Make the binary executable:
-    ```bash
-    chmod +x btrfs-manager-linux-amd64
-    ```
-3.  Run the binary (Root privileges are usually required for BTRFS commands):
-    ```bash
-    sudo ./btrfs-manager-linux-amd64
-    ```
+### 1. Global Settings
+- **Target Drive:** Set the mount point for maintenance tasks (e.g., `/host/mnt/data`).
+- **Log Level:** Choose between Default, Verbose (for debugging), or None.
 
-## Configuration
+### 2. Job Configuration
+Each Backup Job includes:
+- **Source/Destination:** Full paths (prefixed with `/host` if using Docker).
+- **Scheduling:** Interval or Cron.
+- **Retention:** Define how many/how long to keep snapshots.
+- **Hooks:** Script triggers for integration with other tools.
+- **Replication:** Target path for `btrfs send`.
 
-Once the application is running, open the Web UI to configure the settings.
+---
 
-### Global Settings
-*   **Target Drive:** The mount point to perform Scrub, Balance, Defrag, and Compression checks on (e.g., `/host/mnt/disk1`).
-*   **Snapshot Source:** The subvolume or directory you want to backup (e.g., `/host/home`).
-*   **Snapshot Destination:** Where the read-only snapshots will be stored (e.g., `/host/home/.snapshots`).
+## 🛠 Development
+Requires Go 1.22+ and Node.js for frontend assets (if applicable).
 
-### Scheduling
-You can configure independent schedules for Snapshots, Scrub, and Balance.
-*   **Every X:** Runs the task at a fixed interval (Minutes, Hours, or Days).
-*   **Cron:** Use standard Cron syntax (e.g., `*/15 * * * *` for every 15 minutes).
+1. Clone the repo: `git clone https://github.com/hkcfs/btrfs-webui.git`
+2. Build: `CGO_ENABLED=0 go build -o btrfs-commander ./cmd/server`
 
-### Retention Policy
-Automatically delete old snapshots to save space.
-*   **Keep Last (Count):** Retains a specific number of the most recent snapshots.
-*   **Keep Older Than (Time):** Retains snapshots only for a specific duration (Days, Weeks, Months, Years).
+---
 
-## Development
-
-To build this project from source, you need Go 1.25+.
-
-1.  Clone the repository:
-    ```bash
-    git clone https://github.com/hkcfs/btrfs-webui.git
-    cd btrfs-manager
-    ```
-
-2.  Build the binary:
-    ```bash
-    CGO_ENABLED=0 GOOS=linux go build -o btrfs-manager .
-    ```
-
-## Troubleshooting
-
-**"Read-only file system" error**
-Ensure the container has the `privileged: true` flag in Docker Compose and that the destination drive is mounted with write permissions.
-
-**Path not found**
-If running in Docker, remember that the application sees the filesystem from inside the container. If you mapped `/` on the host to `/host` in the container, all your paths in the Web UI config must be prefixed with `/host`.
-
-**Timezone is incorrect**
-Ensure the `TZ` environment variable is set correctly in your Docker config (e.g., `TZ=Europe/London`). Timestamps in filenames and logs rely on this setting.
-
+## 📜 License
+MIT License. See `LICENSE` for details.

@@ -63,6 +63,7 @@ func main() {
 	mux.HandleFunc("/api/snapshots/delete", features.HandleDeleteSnapshot)
 	mux.HandleFunc("/api/snapshots/diff", features.HandleSnapshotDiff)
 	mux.HandleFunc("/api/snapshots/rollback", features.HandleRollback)
+	mux.HandleFunc("/api/snapshots/lock", features.HandleToggleLock)
 	
 	mux.HandleFunc("/api/action/", handleGenericAction)
 
@@ -128,6 +129,22 @@ func smartScheduleJobs() {
 
 			if timeUntil <= 0 {
 				core.PrintConsole("SCHEDULER", "Job %s: Overdue by %s. Running Catch-up.", job.Name, (-timeUntil).String())
+				
+				// Log the missed snapshot
+				core.State.Mu.Lock()
+				core.State.History = append([]core.LogEntry{{
+					ID:        time.Now().UnixNano(),
+					Type:      "SNAPSHOT",
+					Emoji:     "⚠️",
+					Path:      job.Dest,
+					Timestamp: lastSnapTime.Add(interval).Format("02-01-2006 15:04 MST"),
+					Status:    "Missed",
+					Output:    fmt.Sprintf("Snapshot was scheduled for %s but was missed (overdue by %s). Catching up now.", lastSnapTime.Add(interval).Format(time.RFC3339), (-timeUntil).String()),
+					Duration:  "0s",
+				}}, core.State.History...)
+				core.State.Mu.Unlock()
+				core.SaveState()
+
 				go runAndSchedule(job, cronSpec)
 			} else {
 				core.PrintConsole("SCHEDULER", "Job %s: Resuming schedule. Next run in %s", job.Name, timeUntil.Round(time.Second))
