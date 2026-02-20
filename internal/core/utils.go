@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"math"
 )
 
 type LogEntry struct {
@@ -138,13 +139,26 @@ func SaveState() {
 
 func LoadState() {
 	data, err := os.ReadFile("/data/state.json")
-	if err == nil {
-		var loaded AppState
-		json.Unmarshal(data, &loaded)
-		State.Config = loaded.Config
-		State.History = loaded.History
+	if err != nil {
+		fmt.Printf("No existing state file, using defaults: %v\n", err)
+		return
+	}
+	
+	var loaded AppState
+	if err := json.Unmarshal(data, &loaded); err != nil {
+		fmt.Printf("ERROR: Failed to parse state.json: %v\n", err)
+		fmt.Printf("Raw data (first 500 chars): %s\n", string(data[:min(500, len(data))]))
+		return
+	}
+	
+	State.Config = loaded.Config
+	State.History = loaded.History
+	State.LockedSnaps = loaded.LockedSnaps
+	if State.LockedSnaps == nil {
+		State.LockedSnaps = make(map[string]bool)
+	}
 
-		// --- MIGRATION LOGIC (RESTORED) ---
+	// --- MIGRATION LOGIC (RESTORED) ---
 		// If jobs list is empty BUT we have old snapshot settings, migrate them.
 		if len(State.Config.Jobs) == 0 && State.Config.SnapshotSource != "" {
 			fmt.Println("Converting legacy configuration to new Job format...")
@@ -175,8 +189,7 @@ func LoadState() {
 		}
 		
 		// --- NIL SLICE SAFETY (RESTORED) ---
-		if State.Config.Jobs == nil { State.Config.Jobs = []config.BackupJob{} }
-		if State.History == nil { State.History = []LogEntry{} }
-		if State.LockedSnaps == nil { State.LockedSnaps = make(map[string]bool) }
-	}
+	if State.Config.Jobs == nil { State.Config.Jobs = []config.BackupJob{} }
+	if State.History == nil { State.History = []LogEntry{} }
+	if State.LockedSnaps == nil { State.LockedSnaps = make(map[string]bool) }
 }

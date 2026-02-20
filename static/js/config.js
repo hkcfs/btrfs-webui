@@ -5,11 +5,13 @@ export let appConfig = { jobs: [] };
 
 export async function loadConfig() {
     try {
+        console.log("[CONFIG-UI] Loading config from API...");
         const res = await fetch(`${API}/config`);
+        console.log("[CONFIG-UI] Response status:", res.status, res.statusText);
         
         // FIX: Handle 401 without infinite reloading
         if(res.status === 401) {
-            console.warn("Session expired or unauthorized.");
+            console.warn("[CONFIG-UI] Session expired or unauthorized.");
             document.body.innerHTML = `
                 <div style="display:flex;justify-content:center;align-items:center;height:100vh;background:#050505;color:#fff;font-family:monospace;flex-direction:column;gap:20px;">
                     <h2>🔒 Session Expired</h2>
@@ -18,16 +20,34 @@ export async function loadConfig() {
             return; 
         }
         
+        if (!res.ok) {
+            console.error("[CONFIG-UI] Error response:", res.status, res.statusText);
+            alert("Error loading config: " + res.status);
+            return;
+        }
+        
         appConfig = await res.json();
+        console.log("[CONFIG-UI] Loaded config:", JSON.stringify(appConfig, null, 2));
+        console.log("[CONFIG-UI] Jobs count:", appConfig.jobs ? appConfig.jobs.length : 0);
+        
+        if (appConfig.jobs && appConfig.jobs.length > 0) {
+            console.log("[CONFIG-UI] First job:", JSON.stringify(appConfig.jobs[0], null, 2));
+        }
         
         // Populate UI
         const driveInput = document.getElementById('target_drive');
-        if(driveInput) driveInput.value = appConfig.target_drive || '';
+        if(driveInput) {
+            driveInput.value = appConfig.target_drive || '';
+            console.log("[CONFIG-UI] Set target_drive to:", appConfig.target_drive || '');
+        }
         
         const logLevel = document.getElementById('log_level');
         if(logLevel) logLevel.value = appConfig.log_level || 'DEFAULT';
 
+        console.log("[CONFIG-UI] Rendering global scheds...");
         renderGlobalScheds();
+        
+        console.log("[CONFIG-UI] Rendering jobs...");
         renderJobs();
         
         // Show logout button if cookie exists
@@ -35,17 +55,50 @@ export async function loadConfig() {
             const btn = document.getElementById('logoutBtn');
             if(btn) btn.style.display = 'block';
         }
+        
+        console.log("[CONFIG-UI] Load complete!");
     } catch (e) {
-        console.error("Config load failed", e);
+        console.error("[CONFIG-UI] Config load failed", e);
+        alert("Config load failed: " + e.message);
     }
 }
 
 export async function saveConfig() {
+    console.log("[CONFIG-UI] saveConfig called");
+    console.log("[CONFIG-UI] Current appConfig before save:", JSON.stringify(appConfig, null, 2));
+    
     appConfig.target_drive = document.getElementById('target_drive').value;
     appConfig.log_level = document.getElementById('log_level').value;
-    await fetch(`${API}/config`, { method: 'POST', body: JSON.stringify(appConfig) });
-    alert("Saved");
-    loadConfig();
+    
+    console.log("[CONFIG-UI] Sending to API:", JSON.stringify(appConfig, null, 2));
+    
+    try {
+        const res = await fetch(`${API}/config`, { 
+            method: 'POST', 
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(appConfig) 
+        });
+        
+        console.log("[CONFIG-UI] Save response status:", res.status, res.statusText);
+        
+        if (!res.ok) {
+            const errText = await res.text();
+            console.error("[CONFIG-UI] Save error:", errText);
+            alert("Save failed: " + errText);
+            return;
+        }
+        
+        const savedConfig = await res.json();
+        console.log("[CONFIG-UI] Saved config response:", JSON.stringify(savedConfig, null, 2));
+        
+        alert("Saved successfully!");
+        console.log("[CONFIG-UI] Reloading config...");
+        await loadConfig();
+        console.log("[CONFIG-UI] Reload complete, jobs count:", appConfig.jobs ? appConfig.jobs.length : 0);
+    } catch (e) {
+        console.error("[CONFIG-UI] Save failed:", e);
+        alert("Save failed: " + e.message);
+    }
 }
 
 export async function saveGlobalConfig(e) {

@@ -6,7 +6,9 @@ import (
 	"btrfs-commander/internal/features"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
+	"math"
 	"net/http"
 	"os"
 	"strconv"
@@ -26,6 +28,10 @@ func main() {
 	core.PrintConsole(config.LogLevelVerbose, "[MAIN] ====== BTRFS Commander Starting ======")
 	core.PrintConsole(config.LogLevelVerbose, "[MAIN] Loading state from disk...")
 	core.LoadState()
+	
+	// Debug: Print loaded config
+	core.PrintConsole(config.LogLevelVerbose, "[MAIN] After LoadState - Jobs: %d, TargetDrive: '%s', LogLevel: '%s'", 
+		len(core.State.Config.Jobs), core.State.Config.TargetDrive, core.State.Config.LogLevel)
 	
 	core.PrintConsole(config.LogLevelVerbose, "[MAIN] Loaded %d jobs and %d history entries", 
 		len(core.State.Config.Jobs), len(core.State.History))
@@ -302,31 +308,51 @@ func handleConfig(w http.ResponseWriter, r *http.Request) {
 	
 	if r.Method == "POST" {
 		core.PrintConsole(config.LogLevelVerbose, "[API] Processing POST request - updating configuration")
+		
+		// Read body first to debug
+		body, _ := io.ReadAll(r.Body)
+		core.PrintConsole(config.LogLevelVerbose, "[API] POST body (first 500 chars): %s", string(body[:min(500, len(body))]))
+		
 		var newConfig config.GlobalConfig
-		if err := json.NewDecoder(r.Body).Decode(&newConfig); err == nil {
-			oldJobCount := len(core.State.Config.Jobs)
-			newJobCount := len(newConfig.Jobs)
-			oldLogLevel := core.State.Config.LogLevel
-			newLogLevel := newConfig.LogLevel
-			
-			core.PrintConsole(config.LogLevelVerbose, "[API] Config changes: jobs=%d->%d, logLevel=%s->%s",
-				oldJobCount, newJobCount, oldLogLevel, newLogLevel)
-			
-			core.State.Config = newConfig
-			core.PrintConsole(config.LogLevelVerbose, "[API] Saving new configuration to disk...")
-			core.SaveState()
-			core.PrintConsole(config.LogLevelVerbose, "[API] Configuration saved, re-scheduling jobs...")
-			go smartScheduleJobs()
-			core.PrintConsole(config.LogLevelVerbose, "[API] Job re-scheduling initiated")
-		} else {
-			core.PrintConsole(config.LogLevelVerbose, "[API] Failed to decode config: %v", err)
+		if err := json.Unmarshal(body, &newConfig); err != nil {
+			core.PrintConsole(config.LogLevelVerbose, "[API] ERROR: Failed to decode config: %v", err)
+			http.Error(w, "Failed to decode config: " + err.Error(), 400)
+			return
 		}
+		
+		oldJobCount := len(core.State.Config.Jobs)
+		newJobCount := len(newConfig.Jobs)
+		oldLogLevel := core.State.Config.LogLevel
+		newLogLevel := newConfig.LogLevel
+		
+		core.PrintConsole(config.LogLevelVerbose, "[API] Config changes: jobs=%d->%d, logLevel=%s->%s",
+			oldJobCount, newJobCount, oldLogLevel, newLogLevel)
+		
+		// Debug each job
+		for i, job := range newConfig.Jobs {
+			core.PrintConsole(config.LogLevelVerbose, "[API] Job[%d]: id=%s, name=%s, source=%s, dest=%s",
+				i, job.ID, job.Name, job.Source, job.Dest)
+		}
+		
+		core.State.Config = newConfig
+		core.PrintConsole(config.LogLevelVerbose, "[API] Saving new configuration to disk...")
+		core.SaveState()
+		core.PrintConsole(config.LogLevelVerbose, "[API] Configuration saved, re-scheduling jobs...")
+		go smartScheduleJobs()
+		core.PrintConsole(config.LogLevelVerbose, "[API] Job re-scheduling initiated")
 	} else {
 		core.PrintConsole(config.LogLevelVerbose, "[API] Returning current configuration: %d jobs", len(core.State.Config.Jobs))
+		
+		// Debug current jobs
+		for i, job := range core.State.Config.Jobs {
+			core.PrintConsole(config.LogLevelVerbose, "[API] Current Job[%d]: id=%s, name=%s, source=%s, dest=%s",
+				i, job.ID, job.Name, job.Source, job.Dest)
+		}
 	}
 	
+	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(core.State.Config)
-	core.PrintConsole(config.LogLevelVerbose, "[API] handleConfig complete")
+	core.PrintConsole(config.LogLevelVerbose, "[API] handleConfig complete, returning %d jobs", len(core.State.Config.Jobs))
 }
 
 func handleHistory(w http.ResponseWriter, r *http.Request) {

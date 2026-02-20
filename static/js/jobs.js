@@ -10,12 +10,22 @@ let timerInterval = null;
 
 export function renderJobs() {
     const list = document.getElementById('jobList');
-    if(!list) return;
+    if(!list) {
+        console.log("[JOBS-UI] jobList element not found, skipping render");
+        return;
+    }
+    
+    console.log("[JOBS-UI] renderJobs called, appConfig:", JSON.stringify(appConfig, null, 2));
     
     let html = "";
     
-    if(appConfig.jobs) {
+    if(!appConfig.jobs || appConfig.jobs.length === 0) {
+        console.log("[JOBS-UI] No jobs found in config, showing empty state");
+        html += `<div style="padding:20px; text-align:center; color:var(--text-muted)">No backup jobs configured. Click "New Job" to add one.</div>`;
+    } else {
+        console.log("[JOBS-UI] Rendering", appConfig.jobs.length, "jobs");
         html += appConfig.jobs.map((j, i) => {
+            console.log("[JOBS-UI] Rendering job", i, ":", JSON.stringify(j, null, 2));
             let sched = "Manual";
             if(j.schedule.enabled) {
                 if(j.schedule.type === 'cron') sched = `Cron: ${j.schedule.value}`;
