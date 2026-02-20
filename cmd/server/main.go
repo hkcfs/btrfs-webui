@@ -199,27 +199,25 @@ func smartScheduleJobs() {
 				i+1, nextDue.Format(time.RFC3339), timeUntil)
 
 			if timeUntil <= 0 {
-				core.PrintConsole(config.LogLevelVerbose, "[SCHEDULER] [%d] Job is OVERDUE by %s", i+1, (-timeUntil).String())
-				core.PrintConsole("SCHEDULER", "Job %s: Overdue by %s. Running Catch-up.", job.Name, (-timeUntil).String())
-				
-				// Log the missed snapshot
-				core.State.Mu.Lock()
-				core.State.History = append([]core.LogEntry{{
-					ID:        time.Now().UnixNano(),
-					Type:      "SNAPSHOT",
-					Emoji:     "⚠️",
-					Path:      job.Dest,
-					Timestamp: lastSnapTime.Add(interval).Format("02-01-2006 15:04 MST"),
-					Status:    "Missed",
-					Output:    fmt.Sprintf("Snapshot was scheduled for %s but was missed (overdue by %s). Catching up now.", lastSnapTime.Add(interval).Format(time.RFC3339), (-timeUntil).String()),
-					Duration:  "0s",
-				}}, core.State.History...)
-				core.State.Mu.Unlock()
-				core.SaveState()
-				core.PrintConsole(config.LogLevelVerbose, "[SCHEDULER] [%d] Logged missed snapshot event", i+1)
+	core.PrintConsole(config.LogLevelVerbose, "[SCHEDULER] [%d] Job is OVERDUE by %s", i+1, (-timeUntil).String())
+	core.PrintConsole("SCHEDULER", "Job %s: Overdue by %s. Running Catch-up.", job.Name, (-timeUntil).String())
 
-				go runAndSchedule(job, cronSpec)
-				scheduledCount++
+	// Log the missed snapshot
+	core.State.History = append([]core.LogEntry{{
+		ID:        time.Now().UnixNano(),
+		Type:      "SNAPSHOT",
+		Emoji:     "⚠️",
+		Path:      job.Dest,
+		Timestamp: lastSnapTime.Add(interval).Format("02-01-2006 15:04 MST"),
+		Status:    "Missed",
+		Output:    fmt.Sprintf("Snapshot was scheduled for %s but was missed (overdue by %s). Catching up now.", lastSnapTime.Add(interval).Format(time.RFC3339), (-timeUntil).String()),
+		Duration:  "0s",
+	}}, core.State.History...)
+	core.SaveState()
+	core.PrintConsole(config.LogLevelVerbose, "[SCHEDULER] [%d] Logged missed snapshot event", i+1)
+
+	go runAndSchedule(job, cronSpec)
+	scheduledCount++
 			} else {
 				core.PrintConsole(config.LogLevelVerbose, "[SCHEDULER] [%d] Job scheduled for future: %s from now", i+1, timeUntil.Round(time.Second))
 				core.PrintConsole("SCHEDULER", "Job %s: Resuming schedule. Next run in %s", job.Name, timeUntil.Round(time.Second))
