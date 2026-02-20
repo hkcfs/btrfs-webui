@@ -9,7 +9,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"math"
 )
 
 type LogEntry struct {
@@ -147,7 +146,11 @@ func LoadState() {
 	var loaded AppState
 	if err := json.Unmarshal(data, &loaded); err != nil {
 		fmt.Printf("ERROR: Failed to parse state.json: %v\n", err)
-		fmt.Printf("Raw data (first 500 chars): %s\n", string(data[:min(500, len(data))]))
+		maxLen := 500
+		if len(data) < maxLen {
+			maxLen = len(data)
+		}
+		fmt.Printf("Raw data (first %d chars): %s\n", maxLen, string(data[:maxLen]))
 		return
 	}
 	

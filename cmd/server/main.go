@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"math"
 	"net/http"
 	"os"
 	"strconv"
@@ -311,7 +310,11 @@ func handleConfig(w http.ResponseWriter, r *http.Request) {
 		
 		// Read body first to debug
 		body, _ := io.ReadAll(r.Body)
-		core.PrintConsole(config.LogLevelVerbose, "[API] POST body (first 500 chars): %s", string(body[:min(500, len(body))]))
+		bodyLen := 500
+		if len(body) < bodyLen {
+			bodyLen = len(body)
+		}
+		core.PrintConsole(config.LogLevelVerbose, "[API] POST body (first %d chars): %s", bodyLen, string(body[:bodyLen]))
 		
 		var newConfig config.GlobalConfig
 		if err := json.Unmarshal(body, &newConfig); err != nil {
