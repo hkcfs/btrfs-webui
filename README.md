@@ -99,4 +99,4 @@ Requires Go 1.22+ and Node.js for frontend assets (if applicable).
 ---
 
 ## 📜 License
-MIT License. See `LICENSE` for details.
+ GPL-3.0 License. See `LICENSE` for details.
