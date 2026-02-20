@@ -133,12 +133,21 @@ function groupLogsByDate(logs) {
     const groups = {};
     logs.forEach(l => {
         let dateStr = "";
-        if(l.timestamp && l.timestamp.includes("T")) {
-            dateStr = l.timestamp.split("T")[0];
-        } else if (l.timestamp) {
-            // Handle custom DD-MM-YYYY
-            const parts = l.timestamp.split('-');
-            if(parts.length >= 3) dateStr = `${parts[2]}-${parts[1]}-${parts[0]}`; 
+
+        if(l.timestamp) {
+            if(l.timestamp.includes("T")) {
+                dateStr = l.timestamp.split("T")[0];
+            } else {
+                // Try to parse known formats
+                const isoMatch = l.timestamp.match(/(\d{4})-(\d{2})-(\d{2})/);
+                const dmyMatch = l.timestamp.match(/(\d{2})-(\d{2})-(\d{4})/);
+
+                if(isoMatch) {
+                    dateStr = `${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`;
+                } else if(dmyMatch) {
+                    dateStr = `${dmyMatch[3]}-${dmyMatch[2]}-${dmyMatch[1]}`;
+                }
+            }
         }
         
         if(dateStr.length === 10) {
