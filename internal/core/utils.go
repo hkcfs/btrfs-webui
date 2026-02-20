@@ -26,7 +26,7 @@ type AppState struct {
 	Config         config.GlobalConfig `json:"config"`
 	History        []LogEntry          `json:"history"`
 	LockedSnaps    map[string]bool     `json:"locked_snaps"` // Map of snapshot paths that are user-locked
-	Mu             sync.Mutex
+	Mu             sync.Mutex         `json:"-"`
 }
 
 var State = AppState{
