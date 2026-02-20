@@ -240,11 +240,14 @@ func smartScheduleJobs() {
 }
 
 func runAndSchedule(job config.BackupJob, spec string) {
+	fmt.Println(">>> runAndSchedule STARTED for job:", job.Name)
 	features.PerformBackupJob(job)
+	fmt.Println(">>> runAndSchedule BACKUP COMPLETE for job:", job.Name)
 	pendingRunTimesMu.Lock()
 	delete(pendingRunTimes, job.ID)
 	pendingRunTimesMu.Unlock()
 	addRecurringJob(job, spec)
+	fmt.Println(">>> runAndSchedule COMPLETE for job:", job.Name)
 }
 
 func addRecurringJob(job config.BackupJob, spec string) {
