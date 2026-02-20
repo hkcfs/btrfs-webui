@@ -22,11 +22,19 @@ type LogEntry struct {
 	Duration  string `json:"duration"`
 }
 
+// appStateLoad is used for JSON unmarshaling - excludes Mu
+type appStateLoad struct {
+	Config      config.GlobalConfig `json:"config"`
+	History     []LogEntry         `json:"history"`
+	LockedSnaps map[string]bool   `json:"locked_snaps"`
+}
+
+// AppState is the main application state
 type AppState struct {
-	Config         config.GlobalConfig `json:"config"`
-	History        []LogEntry          `json:"history"`
-	LockedSnaps    map[string]bool     `json:"locked_snaps"` // Map of snapshot paths that are user-locked
-	Mu             sync.Mutex         `json:"-"`
+	Config      config.GlobalConfig `json:"config"`
+	History     []LogEntry         `json:"history"`
+	LockedSnaps map[string]bool   `json:"locked_snaps"`
+	Mu          sync.Mutex        // Not serialized
 }
 
 var State = AppState{
@@ -143,7 +151,8 @@ func LoadState() {
 		return
 	}
 	
-	var loaded AppState
+	// Use separate struct for loading to avoid Mu unmarshal issues
+	var loaded appStateLoad
 	if err := json.Unmarshal(data, &loaded); err != nil {
 		fmt.Printf("ERROR: Failed to parse state.json: %v\n", err)
 		maxLen := 500
