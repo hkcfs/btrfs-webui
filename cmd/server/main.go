@@ -47,8 +47,12 @@ func main() {
 	
 	core.PrintConsole(config.LogLevelVerbose, "[MAIN] Initializing smart scheduler...")
 	smartScheduleJobs()
+	
+	fmt.Println(">>> SMART SCHEDULER COMPLETE - Setting up HTTP server...")
+	os.Stdout.Sync()
 
 	mux := http.NewServeMux()
+	fmt.Println(">>> MUX CREATED")
 
 	core.PrintConsole(config.LogLevelVerbose, "[MAIN] Setting up static file server...")
 	fs := http.FileServer(http.Dir("./static"))
@@ -94,6 +98,10 @@ func main() {
 
 	port := os.Getenv("PORT")
 	if port == "" { port = "8080" }
+	
+	fmt.Println(">>> BEFORE SERVER START - Port:", port)
+	fmt.Println(">>> AUTH middleware enabled:", os.Getenv("PASSWORD") != "")
+	
 	core.PrintConsole(config.LogLevelVerbose, "[MAIN] Server will listen on port: %s", port)
 	
 	if os.Getenv("PASSWORD") != "" {
@@ -103,6 +111,8 @@ func main() {
 	}
 	
 	fmt.Printf("🚀 BTRFS Commander started on :%s\n", port)
+	os.Stdout.Sync()
+	
 	core.PrintConsole(config.LogLevelVerbose, "[MAIN] ====== Server Starting ======")
 	log.Fatal(http.ListenAndServe(":"+port, handler))
 }
