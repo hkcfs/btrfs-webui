@@ -8,17 +8,16 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strings"
 )
 
 func HandleBrowserList(w http.ResponseWriter, r *http.Request) {
 	reqPath := r.URL.Query().Get("path")
 	core.PrintConsole(config.LogLevelVerbose, "[BROWSER] HandleBrowserList called for path: %s", reqPath)
-	
-	if reqPath == "" { 
+
+	if reqPath == "" {
 		core.PrintConsole(config.LogLevelVerbose, "[BROWSER] Error: Path is empty")
-		http.Error(w, "Path required", 400) 
-		return 
+		http.Error(w, "Path required", 400)
+		return
 	}
 
 	// SECURITY: Ensure we are browsing inside one of our Destination folders
@@ -26,8 +25,9 @@ func HandleBrowserList(w http.ResponseWriter, r *http.Request) {
 	core.State.Mu.Lock()
 	core.PrintConsole(config.LogLevelVerbose, "[BROWSER] Checking %d jobs for path authorization", len(core.State.Config.Jobs))
 	for _, job := range core.State.Config.Jobs {
-		// Clean paths to prevent ../ traversal attacks
-		if strings.HasPrefix(filepath.Clean(reqPath), filepath.Clean(job.Dest)) {
+		// Resolve symlinks and reject traversal to prevent escaping the
+		// backup tree or following symlinks out of it.
+		if pathWithin(job.Dest, reqPath) {
 			allowed = true
 			core.PrintConsole(config.LogLevelVerbose, "[BROWSER] Path authorized by job: %s (dest: %s)", job.Name, job.Dest)
 			break
@@ -35,18 +35,18 @@ func HandleBrowserList(w http.ResponseWriter, r *http.Request) {
 	}
 	core.State.Mu.Unlock()
 
-	if !allowed { 
+	if !allowed {
 		core.PrintConsole(config.LogLevelVerbose, "[BROWSER] Access denied: path %s not in backup destinations", reqPath)
-		http.Error(w, "Access Denied: Path not in backup destinations", 403) 
-		return 
+		http.Error(w, "Access Denied: Path not in backup destinations", 403)
+		return
 	}
 
 	core.PrintConsole(config.LogLevelVerbose, "[BROWSER] Reading directory: %s", reqPath)
 	entries, err := os.ReadDir(reqPath)
-	if err != nil { 
+	if err != nil {
 		core.PrintConsole(config.LogLevelVerbose, "[BROWSER] Error reading directory: %v", err)
-		http.Error(w, err.Error(), 500) 
-		return 
+		http.Error(w, err.Error(), 500)
+		return
 	}
 	core.PrintConsole(config.LogLevelVerbose, "[BROWSER] Found %d entries", len(entries))
 
@@ -67,11 +67,13 @@ func HandleBrowserList(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	core.PrintConsole(config.LogLevelVerbose, "[BROWSER] Processed %d files", len(files))
-	
+
 	// Sort folders first
 	core.PrintConsole(config.LogLevelVerbose, "[BROWSER] Sorting files (directories first)")
 	sort.Slice(files, func(i, j int) bool {
-		if files[i].IsDir != files[j].IsDir { return files[i].IsDir }
+		if files[i].IsDir != files[j].IsDir {
+			return files[i].IsDir
+		}
 		return files[i].Name < files[j].Name
 	})
 
@@ -82,11 +84,11 @@ func HandleBrowserList(w http.ResponseWriter, r *http.Request) {
 func HandleBrowserDownload(w http.ResponseWriter, r *http.Request) {
 	reqPath := r.URL.Query().Get("path")
 	core.PrintConsole(config.LogLevelVerbose, "[BROWSER] HandleBrowserDownload called for path: %s", reqPath)
-	
-	if reqPath == "" { 
+
+	if reqPath == "" {
 		core.PrintConsole(config.LogLevelVerbose, "[BROWSER] Error: Path is empty")
 		http.Error(w, "Path required", 400)
-		return 
+		return
 	}
 
 	// SECURITY CHECK
@@ -94,7 +96,7 @@ func HandleBrowserDownload(w http.ResponseWriter, r *http.Request) {
 	core.State.Mu.Lock()
 	core.PrintConsole(config.LogLevelVerbose, "[BROWSER] Checking authorization for download")
 	for _, job := range core.State.Config.Jobs {
-		if strings.HasPrefix(filepath.Clean(reqPath), filepath.Clean(job.Dest)) {
+		if pathWithin(job.Dest, reqPath) {
 			allowed = true
 			core.PrintConsole(config.LogLevelVerbose, "[BROWSER] Download authorized by job: %s", job.Name)
 			break
@@ -102,10 +104,10 @@ func HandleBrowserDownload(w http.ResponseWriter, r *http.Request) {
 	}
 	core.State.Mu.Unlock()
 
-	if !allowed { 
+	if !allowed {
 		core.PrintConsole(config.LogLevelVerbose, "[BROWSER] Access denied for download: %s", reqPath)
 		http.Error(w, "Access Denied", 403)
-		return 
+		return
 	}
 
 	core.PrintConsole(config.LogLevelVerbose, "[BROWSER] Serving file: %s", reqPath)

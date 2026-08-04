@@ -2,10 +2,16 @@ services:
   btrfs-commander:
     build: .
     container_name: btrfs_web_ui
+    # Requires privileged mode + host mounts to run btrfs/smartctl on the host.
+    # This makes the container root-equivalent on the host: only expose it on a
+    # trusted network and always set a strong PASSWORD.
     privileged: true
     environment:
       - TZ=UTC
-      - PASSWORD=admin  # Uncomment to enable login
+      # Required: set a strong password. Compose refuses to start without it.
+      - PASSWORD=${PASSWORD:?Set PASSWORD in your .env file (e.g. PASSWORD=your-secure-password)}
+      # Optional: restrict which interface the server binds to.
+      # - BIND_ADDR=127.0.0.1:8080
     volumes:
       - /:/host
       - ./data:/data
