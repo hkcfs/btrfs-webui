@@ -20,34 +20,34 @@ import (
 
 var cronRunner *cron.Cron
 var cronIDs map[string]cron.EntryID
-var pendingRunTimes map[string]time.Time 
+var pendingRunTimes map[string]time.Time
 var pendingRunTimesMu sync.Mutex
 
 func main() {
 	core.PrintConsole(config.LogLevelVerbose, "[MAIN] ====== BTRFS Commander Starting ======")
 	core.PrintConsole(config.LogLevelVerbose, "[MAIN] Loading state from disk...")
 	core.LoadState()
-	
+
 	// Debug: Print loaded config
-	core.PrintConsole(config.LogLevelVerbose, "[MAIN] After LoadState - Jobs: %d, TargetDrive: '%s', LogLevel: '%s'", 
+	core.PrintConsole(config.LogLevelVerbose, "[MAIN] After LoadState - Jobs: %d, TargetDrive: '%s', LogLevel: '%s'",
 		len(core.State.Config.Jobs), core.State.Config.TargetDrive, core.State.Config.LogLevel)
-	
-	core.PrintConsole(config.LogLevelVerbose, "[MAIN] Loaded %d jobs and %d history entries", 
+
+	core.PrintConsole(config.LogLevelVerbose, "[MAIN] Loaded %d jobs and %d history entries",
 		len(core.State.Config.Jobs), len(core.State.History))
 	core.PrintConsole(config.LogLevelVerbose, "[MAIN] Log level: %s", core.State.Config.LogLevel)
 	core.PrintConsole(config.LogLevelVerbose, "[MAIN] Target drive: %s", core.State.Config.TargetDrive)
-	
+
 	cronRunner = cron.New()
 	cronIDs = make(map[string]cron.EntryID)
 	pendingRunTimes = make(map[string]time.Time)
-	
+
 	core.PrintConsole(config.LogLevelVerbose, "[MAIN] Starting cron scheduler...")
 	cronRunner.Start()
 	core.PrintConsole(config.LogLevelVerbose, "[MAIN] Cron scheduler started")
-	
+
 	core.PrintConsole(config.LogLevelVerbose, "[MAIN] Initializing smart scheduler...")
 	smartScheduleJobs()
-	
+
 	fmt.Println(">>> SMART SCHEDULER COMPLETE - Setting up HTTP server...")
 	os.Stdout.Sync()
 
@@ -74,21 +74,21 @@ func main() {
 	mux.HandleFunc("/api/history", handleHistory)
 	mux.HandleFunc("/api/logs/clear", handleClearLogs)
 	mux.HandleFunc("/api/jobs/status", handleJobStatus)
-	
+
 	mux.HandleFunc("/api/storage/usage", features.HandleStorageUsage)
 	mux.HandleFunc("/api/health/smart", features.HandleSmartData)
 	mux.HandleFunc("/api/health/test", features.HandleSmartTest)
 	mux.HandleFunc("/api/health/btrfs", features.HandleBtrfsStats)
 	mux.HandleFunc("/api/browser/list", features.HandleBrowserList)
 	mux.HandleFunc("/api/browser/download", features.HandleBrowserDownload)
-	
+
 	mux.HandleFunc("/api/snapshots/list", features.HandleListSnapshots)
 	mux.HandleFunc("/api/snapshots/stats", features.HandleJobStats)
 	mux.HandleFunc("/api/snapshots/delete", features.HandleDeleteSnapshot)
 	mux.HandleFunc("/api/snapshots/diff", features.HandleSnapshotDiff)
 	mux.HandleFunc("/api/snapshots/rollback", features.HandleRollback)
 	mux.HandleFunc("/api/snapshots/lock", features.HandleToggleLock)
-	
+
 	mux.HandleFunc("/api/action/", handleGenericAction)
 	core.PrintConsole(config.LogLevelVerbose, "[MAIN] All API handlers registered")
 
@@ -97,43 +97,52 @@ func main() {
 	})
 
 	port := os.Getenv("PORT")
-	if port == "" { port = "8080" }
-	
+	if port == "" {
+		port = "8080"
+	}
+
+	// BIND_ADDR allows restricting the interface, e.g. BIND_ADDR=127.0.0.1:8080
+	// for SSH-tunnel-only access.
+	listenAddr := os.Getenv("BIND_ADDR")
+	if listenAddr == "" {
+		listenAddr = ":" + port
+	}
+
 	fmt.Println(">>> BEFORE SERVER START - Port:", port)
 	fmt.Println(">>> AUTH middleware enabled:", os.Getenv("PASSWORD") != "")
-	
-	core.PrintConsole(config.LogLevelVerbose, "[MAIN] Server will listen on port: %s", port)
-	
+
+	core.PrintConsole(config.LogLevelVerbose, "[MAIN] Server will listen on: %s", listenAddr)
+
 	if os.Getenv("PASSWORD") != "" {
 		core.PrintConsole(config.LogLevelVerbose, "[MAIN] Password protection: ENABLED")
 	} else {
 		core.PrintConsole(config.LogLevelVerbose, "[MAIN] Password protection: DISABLED")
 	}
-	
-	fmt.Printf("🚀 BTRFS Commander started on :%s\n", port)
+
+	fmt.Printf("🚀 BTRFS Commander started on %s\n", listenAddr)
 	os.Stdout.Sync()
-	
+
 	core.PrintConsole(config.LogLevelVerbose, "[MAIN] ====== Server Starting ======")
-	log.Fatal(http.ListenAndServe(":"+port, handler))
+	log.Fatal(http.ListenAndServe(listenAddr, handler))
 }
 
 // --- SMART SCHEDULER LOGIC ---
 
 func smartScheduleJobs() {
 	core.PrintConsole(config.LogLevelVerbose, "[SCHEDULER] ====== Scheduling Jobs ======")
-	
+
 	core.State.Mu.Lock()
 	jobCount := len(core.State.Config.Jobs)
 	core.PrintConsole(config.LogLevelVerbose, "[SCHEDULER] Processing %d configured jobs", jobCount)
 	defer core.State.Mu.Unlock()
-	
+
 	core.PrintConsole(config.LogLevelVerbose, "[SCHEDULER] Clearing existing cron jobs...")
-	for id, entryID := range cronIDs { 
+	for id, entryID := range cronIDs {
 		core.PrintConsole(config.LogLevelVerbose, "[SCHEDULER] Removing cron job: %s", id)
-		cronRunner.Remove(entryID) 
+		cronRunner.Remove(entryID)
 	}
 	cronIDs = make(map[string]cron.EntryID)
-	
+
 	pendingRunTimesMu.Lock()
 	pendingRunTimes = make(map[string]time.Time)
 	pendingRunTimesMu.Unlock()
@@ -141,35 +150,37 @@ func smartScheduleJobs() {
 
 	scheduledCount := 0
 	for i, job := range core.State.Config.Jobs {
-		core.PrintConsole(config.LogLevelVerbose, "[SCHEDULER] [%d/%d] Processing job: %s (ID: %s)", 
+		core.PrintConsole(config.LogLevelVerbose, "[SCHEDULER] [%d/%d] Processing job: %s (ID: %s)",
 			i+1, jobCount, job.Name, job.ID)
-		
-		if !job.Schedule.Enabled { 
+
+		if !job.Schedule.Enabled {
 			core.PrintConsole(config.LogLevelVerbose, "[SCHEDULER] [%d] Job scheduling is DISABLED, skipping", i+1)
-			continue 
+			continue
 		}
-		
+
 		core.PrintConsole(config.LogLevelVerbose, "[SCHEDULER] [%d] Schedule config: type=%s, value=%s, unit=%s",
 			i+1, job.Schedule.Type, job.Schedule.Value, job.Schedule.Unit)
 
 		val, _ := strconv.Atoi(job.Schedule.Value)
-		if val <= 0 { val = 1 }
+		if val <= 0 {
+			val = 1
+		}
 		var interval time.Duration
 		var cronSpec string
 
 		if job.Schedule.Type == "every_x" {
 			switch job.Schedule.Unit {
-			case "minutes": 
+			case "minutes":
 				interval = time.Duration(val) * time.Minute
 				cronSpec = fmt.Sprintf("@every %dm", val)
 				core.PrintConsole(config.LogLevelVerbose, "[SCHEDULER] [%d] Interval mode: %d minutes (%s)", i+1, val, cronSpec)
-			case "hours": 
+			case "hours":
 				interval = time.Duration(val) * time.Hour
 				cronSpec = fmt.Sprintf("@every %dh", val)
 				core.PrintConsole(config.LogLevelVerbose, "[SCHEDULER] [%d] Interval mode: %d hours (%s)", i+1, val, cronSpec)
-			case "days": 
+			case "days":
 				interval = time.Duration(val) * 24 * time.Hour
-				cronSpec = fmt.Sprintf("@every %dh", val * 24)
+				cronSpec = fmt.Sprintf("@every %dh", val*24)
 				core.PrintConsole(config.LogLevelVerbose, "[SCHEDULER] [%d] Interval mode: %d days (%s)", i+1, val, cronSpec)
 			}
 		} else {
@@ -182,10 +193,10 @@ func smartScheduleJobs() {
 		core.PrintConsole(config.LogLevelVerbose, "[SCHEDULER] [%d] Checking last snapshot time in: %s", i+1, job.Dest)
 		lastSnapTime := getLastSnapshotTime(job.Dest)
 		now := time.Now()
-		
+
 		core.PrintConsole(config.LogLevelVerbose, "[SCHEDULER] [%d] Job '%s': interval=%s, lastSnap=%s, now=%s",
 			i+1, job.Name, interval, lastSnapTime.Format(time.RFC3339), now.Format(time.RFC3339))
-		
+
 		if lastSnapTime.IsZero() {
 			core.PrintConsole(config.LogLevelVerbose, "[SCHEDULER] [%d] No previous snapshots found for job", i+1)
 			core.PrintConsole("SCHEDULER", "Job %s: No valid history found. Running Initial.", job.Name)
@@ -194,15 +205,15 @@ func smartScheduleJobs() {
 		} else {
 			nextDue := lastSnapTime.Add(interval)
 			timeUntil := nextDue.Sub(now)
-			
+
 			core.PrintConsole(config.LogLevelVerbose, "[SCHEDULER] [%d] Calculated nextDue=%s, timeUntil=%s",
 				i+1, nextDue.Format(time.RFC3339), timeUntil)
 
 			if timeUntil <= 0 {
-	core.PrintConsole(config.LogLevelVerbose, "[SCHEDULER] [%d] Job is OVERDUE by %s", i+1, (-timeUntil).String())
-	core.PrintConsole("SCHEDULER", "Job %s: Overdue by %s. Running Catch-up.", job.Name, (-timeUntil).String())
+				core.PrintConsole(config.LogLevelVerbose, "[SCHEDULER] [%d] Job is OVERDUE by %s", i+1, (-timeUntil).String())
+				core.PrintConsole("SCHEDULER", "Job %s: Overdue by %s. Running Catch-up.", job.Name, (-timeUntil).String())
 
-	// Log the missed snapshot
+				// Log the missed snapshot
 				core.State.History = append([]core.LogEntry{{
 					ID:        time.Now().UnixNano(),
 					Type:      "SNAPSHOT",
@@ -213,11 +224,11 @@ func smartScheduleJobs() {
 					Output:    fmt.Sprintf("Snapshot was scheduled for %s but was missed (overdue by %s). Catching up now.", lastSnapTime.Add(interval).Format(time.RFC3339), (-timeUntil).String()),
 					Duration:  "0s",
 				}}, core.State.History...)
-	core.SaveState()
-	core.PrintConsole(config.LogLevelVerbose, "[SCHEDULER] [%d] Logged missed snapshot event", i+1)
+				core.SaveState()
+				core.PrintConsole(config.LogLevelVerbose, "[SCHEDULER] [%d] Logged missed snapshot event", i+1)
 
-	go runAndSchedule(job, cronSpec)
-	scheduledCount++
+				go runAndSchedule(job, cronSpec)
+				scheduledCount++
 			} else {
 				core.PrintConsole(config.LogLevelVerbose, "[SCHEDULER] [%d] Job scheduled for future: %s from now", i+1, timeUntil.Round(time.Second))
 				core.PrintConsole("SCHEDULER", "Job %s: Resuming schedule. Next run in %s", job.Name, timeUntil.Round(time.Second))
@@ -225,15 +236,15 @@ func smartScheduleJobs() {
 				pendingRunTimes[job.ID] = nextDue
 				pendingRunTimesMu.Unlock()
 				core.PrintConsole(config.LogLevelVerbose, "[SCHEDULER] [%d] Set pending run time for job", i+1)
-				time.AfterFunc(timeUntil, func() { 
+				time.AfterFunc(timeUntil, func() {
 					core.PrintConsole(config.LogLevelVerbose, "[SCHEDULER] Timer expired for job %s, running now", job.Name)
-					runAndSchedule(job, cronSpec) 
+					runAndSchedule(job, cronSpec)
 				})
 				scheduledCount++
 			}
 		}
 	}
-	
+
 	core.PrintConsole(config.LogLevelVerbose, "[SCHEDULER] ====== Scheduling Complete: %d jobs scheduled ======", scheduledCount)
 }
 
@@ -251,7 +262,9 @@ func runAndSchedule(job config.BackupJob, spec string) {
 func addRecurringJob(job config.BackupJob, spec string) {
 	core.State.Mu.Lock()
 	defer core.State.Mu.Unlock()
-	if _, exists := cronIDs["job_"+job.ID]; exists { return }
+	if _, exists := cronIDs["job_"+job.ID]; exists {
+		return
+	}
 
 	id, err := cronRunner.AddFunc(spec, func() { go features.PerformBackupJob(job) })
 	if err == nil {
@@ -264,13 +277,17 @@ func addRecurringJob(job config.BackupJob, spec string) {
 
 func getLastSnapshotTime(dest string) time.Time {
 	entries, err := os.ReadDir(dest)
-	if err != nil { return time.Time{} }
+	if err != nil {
+		return time.Time{}
+	}
 
 	var newest time.Time
 	for _, e := range entries {
 		if e.IsDir() {
 			t := features.ParseSnapshotTime(e)
-			if t.After(newest) { newest = t }
+			if t.After(newest) {
+				newest = t
+			}
 		}
 	}
 	return newest
@@ -279,11 +296,11 @@ func getLastSnapshotTime(dest string) time.Time {
 // --- Handlers ---
 func handleJobStatus(w http.ResponseWriter, r *http.Request) {
 	core.PrintConsole(config.LogLevelVerbose, "[API] handleJobStatus called")
-	
+
 	core.State.Mu.Lock()
 	jobs := core.State.Config.Jobs
 	core.State.Mu.Unlock()
-	
+
 	status := make(map[string]interface{})
 	pendingRunTimesMu.Lock()
 	defer pendingRunTimesMu.Unlock()
@@ -305,20 +322,20 @@ func handleJobStatus(w http.ResponseWriter, r *http.Request) {
 			core.PrintConsole(config.LogLevelVerbose, "[API] Job %s: not scheduled", job.ID)
 		}
 	}
-	
+
 	json.NewEncoder(w).Encode(status)
 	core.PrintConsole(config.LogLevelVerbose, "[API] handleJobStatus complete, returned %d statuses", len(status))
 }
 
 func handleConfig(w http.ResponseWriter, r *http.Request) {
 	core.PrintConsole(config.LogLevelVerbose, "[API] handleConfig called: method=%s", r.Method)
-	
+
 	core.State.Mu.Lock()
 	defer core.State.Mu.Unlock()
-	
+
 	if r.Method == "POST" {
 		core.PrintConsole(config.LogLevelVerbose, "[API] Processing POST request - updating configuration")
-		
+
 		// Read body first to debug
 		body, _ := io.ReadAll(r.Body)
 		bodyLen := 500
@@ -326,28 +343,31 @@ func handleConfig(w http.ResponseWriter, r *http.Request) {
 			bodyLen = len(body)
 		}
 		core.PrintConsole(config.LogLevelVerbose, "[API] POST body (first %d chars): %s", bodyLen, string(body[:bodyLen]))
-		
+
 		var newConfig config.GlobalConfig
 		if err := json.Unmarshal(body, &newConfig); err != nil {
 			core.PrintConsole(config.LogLevelVerbose, "[API] ERROR: Failed to decode config: %v", err)
-			http.Error(w, "Failed to decode config: " + err.Error(), 400)
+			http.Error(w, "Failed to decode config: "+err.Error(), 400)
 			return
 		}
-		
+		if newConfig.Jobs == nil {
+			newConfig.Jobs = []config.BackupJob{}
+		}
+
 		oldJobCount := len(core.State.Config.Jobs)
 		newJobCount := len(newConfig.Jobs)
 		oldLogLevel := core.State.Config.LogLevel
 		newLogLevel := newConfig.LogLevel
-		
+
 		core.PrintConsole(config.LogLevelVerbose, "[API] Config changes: jobs=%d->%d, logLevel=%s->%s",
 			oldJobCount, newJobCount, oldLogLevel, newLogLevel)
-		
+
 		// Debug each job
 		for i, job := range newConfig.Jobs {
 			core.PrintConsole(config.LogLevelVerbose, "[API] Job[%d]: id=%s, name=%s, source=%s, dest=%s",
 				i, job.ID, job.Name, job.Source, job.Dest)
 		}
-		
+
 		core.State.Config = newConfig
 		core.PrintConsole(config.LogLevelVerbose, "[API] Saving new configuration to disk...")
 		core.SaveState()
@@ -356,14 +376,14 @@ func handleConfig(w http.ResponseWriter, r *http.Request) {
 		core.PrintConsole(config.LogLevelVerbose, "[API] Job re-scheduling initiated")
 	} else {
 		core.PrintConsole(config.LogLevelVerbose, "[API] Returning current configuration: %d jobs", len(core.State.Config.Jobs))
-		
+
 		// Debug current jobs
 		for i, job := range core.State.Config.Jobs {
 			core.PrintConsole(config.LogLevelVerbose, "[API] Current Job[%d]: id=%s, name=%s, source=%s, dest=%s",
 				i, job.ID, job.Name, job.Source, job.Dest)
 		}
 	}
-	
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(core.State.Config)
 	core.PrintConsole(config.LogLevelVerbose, "[API] handleConfig complete, returning %d jobs", len(core.State.Config.Jobs))
@@ -394,15 +414,19 @@ func handleGenericAction(w http.ResponseWriter, r *http.Request) {
 	case "job":
 		jobID := r.URL.Query().Get("id")
 		core.PrintConsole(config.LogLevelVerbose, "[API] Manual job trigger requested for job_id=%s", jobID)
-		
+
 		core.State.Mu.Lock()
 		var tgt config.BackupJob
 		found := false
 		for _, j := range core.State.Config.Jobs {
-			if j.ID == jobID { tgt = j; found = true; break }
+			if j.ID == jobID {
+				tgt = j
+				found = true
+				break
+			}
 		}
 		core.State.Mu.Unlock()
-		
+
 		if found {
 			core.PrintConsole(config.LogLevelVerbose, "[API] Found job '%s', triggering execution", tgt.Name)
 			go features.PerformBackupJob(tgt)
@@ -464,7 +488,7 @@ func handleGenericAction(w http.ResponseWriter, r *http.Request) {
 	default:
 		core.PrintConsole(config.LogLevelVerbose, "[API] Unknown action type: %s", actionType)
 	}
-	
+
 	core.PrintConsole(config.LogLevelVerbose, "[API] handleGenericAction complete, returning id=%d", id)
 	json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "id": id})
 }

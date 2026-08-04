@@ -98,5 +98,26 @@ Requires Go 1.22+ and Node.js for frontend assets (if applicable).
 
 ---
 
+## 🔐 Security
+
+This tool executes `btrfs`, `smartctl`, and other commands against paths you
+configure. In Docker it runs **privileged with the host root mounted at
+`/host`**, so it is root-equivalent on the host machine. Treat it as a
+management console for root access, not as a low-privilege service.
+
+- **Always set `PASSWORD`** to a strong, unique value. Without it, every
+  endpoint is open to anyone who can reach the port.
+- The old default `PASSWORD=admin` from the sample `docker-compose.yml` has
+  been removed; never use it.
+- Only expose the port on a **trusted network**. The built-in auth is
+  single-factor HTTP login, not a substitute for a firewall or VPN.
+- For extra safety, bind to loopback only and reach the UI through an SSH
+  tunnel or a reverse proxy that adds TLS and real authentication:
+  `BIND_ADDR=127.0.0.1:8080`.
+- Session cookies are `HttpOnly` + `SameSite=Strict`, server-side tokens are
+  random, and login attempts are rate limited. The session lasts 24 hours.
+- Snapshots can contain symlinks; the file browser only serves paths that
+  resolve inside a configured backup destination.
+
 ## 📜 License
  GPL-3.0 License. See `LICENSE` for details.

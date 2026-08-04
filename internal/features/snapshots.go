@@ -16,16 +16,16 @@ import (
 
 // Supported Time Formats
 var TimeLayouts = []string{
-	"02-01-2006-15-04",       // Custom format (minus TZ)
-	"02-01-2006-15-04-MST",   // Legacy support
-	"2006-01-02-15-04-MST",   // ISO-like
+	"02-01-2006-15-04",     // Custom format (minus TZ)
+	"02-01-2006-15-04-MST", // Legacy support
+	"2006-01-02-15-04-MST", // ISO-like
 	time.RFC3339,
 }
 
 // Robust Parser: Ignores text suffix if standard parse fails
 func ParseSnapshotTime(e os.DirEntry) time.Time {
 	name := e.Name()
-	
+
 	// 1. Try standard layouts
 	for _, layout := range TimeLayouts {
 		if t, err := time.ParseInLocation(layout, name, time.Local); err == nil {
@@ -39,7 +39,7 @@ func ParseSnapshotTime(e os.DirEntry) time.Time {
 	parts := strings.Split(name, "-")
 	if len(parts) >= 5 {
 		// Reconstruct the date/time part only (first 5 parts)
-		datePart := strings.Join(parts[:5], "-") 
+		datePart := strings.Join(parts[:5], "-")
 		layout := "02-01-2006-15-04"
 		if t, err := time.ParseInLocation(layout, datePart, time.Local); err == nil {
 			return t
@@ -55,31 +55,31 @@ func ParseSnapshotTime(e os.DirEntry) time.Time {
 func HandleListSnapshots(w http.ResponseWriter, r *http.Request) {
 	jobID := r.URL.Query().Get("job_id")
 	core.PrintConsole(config.LogLevelVerbose, "[API] HandleListSnapshots called for job_id=%s", jobID)
-	
+
 	var dest string
 	core.State.Mu.Lock()
 	core.PrintConsole(config.LogLevelVerbose, "[API] Looking up job in %d configured jobs", len(core.State.Config.Jobs))
 	for _, j := range core.State.Config.Jobs {
-		if j.ID == jobID { 
-			dest = j.Dest 
+		if j.ID == jobID {
+			dest = j.Dest
 			core.PrintConsole(config.LogLevelVerbose, "[API] Found job: name=%s, dest=%s", j.Name, j.Dest)
-			break 
+			break
 		}
 	}
 	core.State.Mu.Unlock()
 
-	if dest == "" { 
+	if dest == "" {
 		core.PrintConsole(config.LogLevelVerbose, "[API] Job not found: job_id=%s", jobID)
-		http.Error(w, "Job not found", 404) 
-		return 
+		http.Error(w, "Job not found", 404)
+		return
 	}
 
 	core.PrintConsole(config.LogLevelVerbose, "[API] Reading directory: %s", dest)
 	entries, err := os.ReadDir(dest)
-	if err != nil { 
+	if err != nil {
 		core.PrintConsole("ERROR", "ReadDir failed: %v", err)
 		http.Error(w, err.Error(), 500)
-		return 
+		return
 	}
 	core.PrintConsole(config.LogLevelVerbose, "[API] Found %d entries in destination", len(entries))
 
@@ -91,7 +91,7 @@ func HandleListSnapshots(w http.ResponseWriter, r *http.Request) {
 		Locked  bool      `json:"locked"`
 	}
 	var list []SnapshotItem
-	
+
 	for _, e := range entries {
 		if e.IsDir() {
 			core.PrintConsole(config.LogLevelVerbose, "[API] Processing snapshot: %s", e.Name())
@@ -108,7 +108,7 @@ func HandleListSnapshots(w http.ResponseWriter, r *http.Request) {
 			})
 		}
 	}
-	
+
 	core.PrintConsole(config.LogLevelVerbose, "[API] Sorting %d snapshots by date", len(list))
 	sort.Slice(list, func(i, j int) bool { return list[i].SortKey.After(list[j].SortKey) })
 	core.PrintConsole(config.LogLevelVerbose, "[API] Returning %d snapshots", len(list))
@@ -119,19 +119,19 @@ func HandleListSnapshots(w http.ResponseWriter, r *http.Request) {
 func HandleJobStats(w http.ResponseWriter, r *http.Request) {
 	jobID := r.URL.Query().Get("job_id")
 	core.PrintConsole(config.LogLevelVerbose, "[API] HandleJobStats called for job_id=%s", jobID)
-	
+
 	var dest string
 	core.State.Mu.Lock()
 	for _, j := range core.State.Config.Jobs {
-		if j.ID == jobID { 
+		if j.ID == jobID {
 			dest = j.Dest
 			core.PrintConsole(config.LogLevelVerbose, "[API] Found job: %s, dest=%s", j.Name, j.Dest)
-			break 
+			break
 		}
 	}
 	core.State.Mu.Unlock()
 
-	if dest == "" { 
+	if dest == "" {
 		core.PrintConsole(config.LogLevelVerbose, "[API] Job not found: %s", jobID)
 		http.Error(w, "Job not found", 404)
 		return
@@ -161,7 +161,7 @@ func HandleJobStats(w http.ResponseWriter, r *http.Request) {
 
 	core.PrintConsole(config.LogLevelVerbose, "[API] Stats for job %s: count=%d, oldest=%s", jobID, count, oldestStr)
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"count": count,
+		"count":  count,
 		"oldest": oldestStr,
 	})
 }
@@ -171,8 +171,8 @@ func HandleSnapshotDiff(w http.ResponseWriter, r *http.Request) {
 	snapA := r.URL.Query().Get("a")
 	snapB := r.URL.Query().Get("b")
 	core.PrintConsole(config.LogLevelVerbose, "[API] HandleSnapshotDiff called: snapA=%s, snapB=%s", snapA, snapB)
-	
-	if snapA == "" || snapB == "" { 
+
+	if snapA == "" || snapB == "" {
 		core.PrintConsole(config.LogLevelVerbose, "[DIFF] Error: Missing snapshot path(s)")
 		http.Error(w, "Need two snapshots", 400)
 		return
@@ -181,23 +181,25 @@ func HandleSnapshotDiff(w http.ResponseWriter, r *http.Request) {
 	core.State.Mu.Lock()
 	dest := ""
 	for _, j := range core.State.Config.Jobs {
-		if strings.HasPrefix(snapA, j.Dest) { 
+		if pathWithin(j.Dest, snapA) && pathWithin(j.Dest, snapB) {
 			dest = j.Dest
 			core.PrintConsole(config.LogLevelVerbose, "[DIFF] Authorized by job: %s", j.Name)
-			break 
+			break
 		}
 	}
 	core.State.Mu.Unlock()
-	
-	if dest == "" { 
-		core.PrintConsole(config.LogLevelVerbose, "[DIFF] Access denied: path not in any job destination")
+
+	if dest == "" {
+		core.PrintConsole(config.LogLevelVerbose, "[DIFF] Access denied: paths not in any job destination")
 		http.Error(w, "Unknown snapshot path", 403)
 		return
 	}
 
-	cmdStr := fmt.Sprintf("btrfs send --no-data -p '%s' '%s' | btrfs receive --dump", snapA, snapB)
-	core.PrintConsole(config.LogLevelVerbose, "[DIFF] Command: %s", cmdStr)
-	id := core.RunCommandAsync("DIFF", "🔍", "Compare", "sh", "-c", cmdStr)
+	// Shell-free pipeline: btrfs send ... | btrfs receive --dump
+	id := core.RunCommandPipelineAsync("DIFF", "🔍", "Compare",
+		[]string{"btrfs", "send", "--no-data", "-p", snapA, snapB},
+		[]string{"btrfs", "receive", "--dump"},
+	)
 	core.PrintConsole(config.LogLevelVerbose, "[DIFF] Diff job ID: %d", id)
 	json.NewEncoder(w).Encode(map[string]interface{}{"id": id})
 }
@@ -206,27 +208,27 @@ func HandleRollback(w http.ResponseWriter, r *http.Request) {
 	snapPath := r.URL.Query().Get("path")
 	jobID := r.URL.Query().Get("job_id")
 	core.PrintConsole(config.LogLevelVerbose, "[API] HandleRollback called: snapPath=%s, jobID=%s", snapPath, jobID)
-	
+
 	var job config.BackupJob
 	found := false
 	core.State.Mu.Lock()
 	for _, j := range core.State.Config.Jobs {
-		if j.ID == jobID { 
+		if j.ID == jobID {
 			job = j
 			found = true
 			core.PrintConsole(config.LogLevelVerbose, "[ROLLBACK] Found job: %s", j.Name)
-			break 
+			break
 		}
 	}
 	core.State.Mu.Unlock()
 
-	if !found { 
+	if !found {
 		core.PrintConsole(config.LogLevelVerbose, "[ROLLBACK] Job not found: %s", jobID)
 		http.Error(w, "Job not found", 404)
 		return
 	}
-	
-	if !strings.HasPrefix(snapPath, job.Dest) { 
+
+	if !pathWithin(job.Dest, snapPath) {
 		core.PrintConsole(config.LogLevelVerbose, "[ROLLBACK] Invalid path: %s not in job dest %s", snapPath, job.Dest)
 		http.Error(w, "Invalid snap path", 403)
 		return
@@ -251,29 +253,29 @@ func HandleRollback(w http.ResponseWriter, r *http.Request) {
 func HandleDeleteSnapshot(w http.ResponseWriter, r *http.Request) {
 	path := r.URL.Query().Get("path")
 	core.PrintConsole(config.LogLevelVerbose, "[API] HandleDeleteSnapshot called: path=%s", path)
-	
-	if path == "" { 
+
+	if path == "" {
 		core.PrintConsole(config.LogLevelVerbose, "[DELETE] Error: Path is empty")
-		http.Error(w, "Path required", 400) 
-		return 
+		http.Error(w, "Path required", 400)
+		return
 	}
-	
+
 	allowed := false
 	core.State.Mu.Lock()
 	core.PrintConsole(config.LogLevelVerbose, "[DELETE] Checking authorization against %d jobs", len(core.State.Config.Jobs))
 	for _, j := range core.State.Config.Jobs {
-		if strings.HasPrefix(filepath.Clean(path), filepath.Clean(j.Dest)) {
+		if pathWithin(j.Dest, path) {
 			allowed = true
 			core.PrintConsole(config.LogLevelVerbose, "[DELETE] Path authorized by job: %s", j.Name)
 			break
 		}
 	}
 	core.State.Mu.Unlock()
-	
-	if !allowed { 
+
+	if !allowed {
 		core.PrintConsole(config.LogLevelVerbose, "[DELETE] Access forbidden: path %s", path)
-		http.Error(w, "Forbidden", 403) 
-		return 
+		http.Error(w, "Forbidden", 403)
+		return
 	}
 
 	core.PrintConsole(config.LogLevelVerbose, "[DELETE] Triggering async deletion for: %s", path)
@@ -289,7 +291,7 @@ func PerformBackupJob(job config.BackupJob) {
 	core.PrintConsole(config.LogLevelVerbose, "[BACKUP] Job Name: %s", job.Name)
 	core.PrintConsole(config.LogLevelVerbose, "[BACKUP] Source: %s", job.Source)
 	core.PrintConsole(config.LogLevelVerbose, "[BACKUP] Destination: %s", job.Dest)
-	core.PrintConsole(config.LogLevelVerbose, "[BACKUP] Schedule: enabled=%v, type=%s, value=%s, unit=%s", 
+	core.PrintConsole(config.LogLevelVerbose, "[BACKUP] Schedule: enabled=%v, type=%s, value=%s, unit=%s",
 		job.Schedule.Enabled, job.Schedule.Type, job.Schedule.Value, job.Schedule.Unit)
 	core.PrintConsole(config.LogLevelVerbose, "[BACKUP] Retention: enabled=%v, mode=%s, value=%d, unit=%s",
 		job.Retention.Enabled, job.Retention.Mode, job.Retention.Value, job.Retention.Unit)
@@ -298,16 +300,16 @@ func PerformBackupJob(job config.BackupJob) {
 
 	core.PrintConsole(config.LogLevelVerbose, "[BACKUP] Creating destination directory: %s", job.Dest)
 	os.MkdirAll(job.Dest, 0755)
-	
+
 	now := time.Now()
 	tz, _ := now.Zone()
 	name := fmt.Sprintf("%s-%s", now.Format("02-01-2006-15-04"), tz)
 	fullDest := filepath.Join(job.Dest, name)
-	
+
 	core.PrintConsole(config.LogLevelVerbose, "[BACKUP] Generated snapshot name: %s", name)
 	core.PrintConsole(config.LogLevelVerbose, "[BACKUP] Full destination path: %s", fullDest)
 	core.PrintConsole(config.LogLevelVerbose, "[BACKUP] Timestamp: %s, Timezone: %s", now.Format(time.RFC3339), tz)
-	
+
 	core.PrintConsole(config.LogLevelDefault, "Starting Job: %s", job.Name)
 
 	if job.PreCommand != "" {
@@ -321,25 +323,25 @@ func PerformBackupJob(job config.BackupJob) {
 
 	core.PrintConsole(config.LogLevelVerbose, "[BACKUP] Creating BTRFS read-only snapshot...")
 	core.PrintConsole(config.LogLevelVerbose, "[BACKUP] Command: btrfs subvolume snapshot -r %s %s", job.Source, fullDest)
-	
+
 	cmd := exec.Command("btrfs", "subvolume", "snapshot", "-r", job.Source, fullDest)
 	out, err := cmd.CombinedOutput()
-	
+
 	status := "Success"
-	if err != nil { 
-		status = "Failed" 
+	if err != nil {
+		status = "Failed"
 		core.PrintConsole(config.LogLevelVerbose, "[BACKUP] Snapshot creation FAILED: %v", err)
 		core.PrintConsole(config.LogLevelVerbose, "[BACKUP] Error output: %s", string(out))
 	} else {
 		core.PrintConsole(config.LogLevelVerbose, "[BACKUP] Snapshot creation SUCCESS")
 		core.PrintConsole(config.LogLevelVerbose, "[BACKUP] Command output: %s", string(out))
 	}
-	
+
 	core.PrintConsole(config.LogLevelVerbose, "[BACKUP] Updating history with snapshot result...")
 	core.State.Mu.Lock()
 	core.State.History = append([]core.LogEntry{{
-		ID: time.Now().UnixNano(), Type: "SNAPSHOT", Emoji: "📸", 
-		Path: fullDest, Timestamp: now.Format(time.RFC3339), 
+		ID: time.Now().UnixNano(), Type: "SNAPSHOT", Emoji: "📸",
+		Path: fullDest, Timestamp: now.Format(time.RFC3339),
 		Status: status, Output: string(out), Duration: "0s",
 	}}, core.State.History...)
 	core.State.Mu.Unlock()
@@ -348,23 +350,24 @@ func PerformBackupJob(job config.BackupJob) {
 
 	if status == "Success" {
 		core.PrintConsole(config.LogLevelVerbose, "[BACKUP] Snapshot successful, proceeding with post-processing...")
-		
+
 		if job.Replication.Enabled && job.Replication.TargetDest != "" {
 			core.PrintConsole(config.LogLevelVerbose, "[BACKUP] Replication enabled, target: %s", job.Replication.TargetDest)
-			replCmd := fmt.Sprintf("btrfs send '%s' | btrfs receive '%s'", fullDest, job.Replication.TargetDest)
-			core.PrintConsole(config.LogLevelVerbose, "[BACKUP] Replication command: %s", replCmd)
-			core.RunCommandAsync("REPLICATE", "🚀", job.Replication.TargetDest, "sh", "-c", replCmd)
+			core.RunCommandPipelineAsync("REPLICATE", "🚀", job.Replication.TargetDest,
+				[]string{"btrfs", "send", fullDest},
+				[]string{"btrfs", "receive", job.Replication.TargetDest},
+			)
 		} else {
 			core.PrintConsole(config.LogLevelVerbose, "[BACKUP] Replication disabled or no target configured")
 		}
-		
+
 		if job.PostCommand != "" {
 			core.PrintConsole(config.LogLevelVerbose, "[BACKUP] Executing post-hook command: %s", job.PostCommand)
 			core.RunCommandAsync("HOOK-POST", "🪝", job.Name, "sh", "-c", job.PostCommand)
 		} else {
 			core.PrintConsole(config.LogLevelVerbose, "[BACKUP] No post-hook configured")
 		}
-		
+
 		if job.Retention.Enabled {
 			core.PrintConsole(config.LogLevelVerbose, "[BACKUP] Enforcing retention policy...")
 			EnforceRetention(job.Dest, job.Retention)
@@ -374,7 +377,7 @@ func PerformBackupJob(job config.BackupJob) {
 	} else {
 		core.PrintConsole(config.LogLevelVerbose, "[BACKUP] Snapshot failed, skipping post-processing")
 	}
-	
+
 	core.PrintConsole(config.LogLevelVerbose, "[BACKUP] ====== Backup Job Complete ======")
 }
 
@@ -389,9 +392,9 @@ func isLocked(path string) bool {
 func HandleToggleLock(w http.ResponseWriter, r *http.Request) {
 	path := r.URL.Query().Get("path")
 	lock := r.URL.Query().Get("lock") == "true"
-	
+
 	core.PrintConsole(config.LogLevelVerbose, "[API] HandleToggleLock called: path=%s, lock=%v", path, lock)
-	
+
 	if path == "" {
 		core.PrintConsole(config.LogLevelVerbose, "[LOCK] Error: Path is empty")
 		http.Error(w, "Path required", 400)
@@ -402,13 +405,13 @@ func HandleToggleLock(w http.ResponseWriter, r *http.Request) {
 	core.State.Mu.Lock()
 	core.PrintConsole(config.LogLevelVerbose, "[LOCK] Checking authorization against %d jobs", len(core.State.Config.Jobs))
 	for _, j := range core.State.Config.Jobs {
-		if strings.HasPrefix(filepath.Clean(path), filepath.Clean(j.Dest)) {
+		if pathWithin(j.Dest, path) {
 			allowed = true
 			core.PrintConsole(config.LogLevelVerbose, "[LOCK] Path authorized by job: %s", j.Name)
 			break
 		}
 	}
-	
+
 	if !allowed {
 		core.State.Mu.Unlock()
 		core.PrintConsole(config.LogLevelVerbose, "[LOCK] Access forbidden: path %s not in any job destination", path)
@@ -423,7 +426,7 @@ func HandleToggleLock(w http.ResponseWriter, r *http.Request) {
 	} else {
 		delete(core.State.LockedSnaps, path)
 	}
-	
+
 	core.SaveState()
 	core.State.Mu.Unlock()
 
@@ -457,7 +460,7 @@ func EnforceRetention(destPath string, cfg config.RetentionConfig) {
 		Locked bool
 	}
 	var snaps []Snap
-	
+
 	core.PrintConsole(config.LogLevelVerbose, "[RETENTION] Analyzing snapshots...")
 	for _, e := range entries {
 		if e.IsDir() {
@@ -469,12 +472,12 @@ func EnforceRetention(destPath string, cfg config.RetentionConfig) {
 			snaps = append(snaps, Snap{Name: e.Name(), Time: t, Locked: locked})
 		}
 	}
-	
+
 	core.PrintConsole(config.LogLevelVerbose, "[RETENTION] Sorting %d snapshots by date (newest first)", len(snaps))
 	sort.Slice(snaps, func(i, j int) bool { return snaps[i].Time.After(snaps[j].Time) })
 
 	var toDel []string
-	
+
 	if cfg.Mode == "count" {
 		core.PrintConsole(config.LogLevelVerbose, "[RETENTION] Mode: COUNT - Keeping last %d snapshots", cfg.Value)
 		count := 0
@@ -514,7 +517,7 @@ func EnforceRetention(destPath string, cfg config.RetentionConfig) {
 			core.PrintConsole(config.LogLevelVerbose, "[RETENTION] Mode: TIME - Keeping snapshots newer than %d years (cutoff: %s)",
 				cfg.Value, cutoff.Format(time.RFC3339))
 		}
-		
+
 		for i, s := range snaps {
 			if s.Locked {
 				core.PrintConsole(config.LogLevelVerbose, "[RETENTION] [%d] %s is LOCKED (read-only), skipping",
@@ -533,7 +536,7 @@ func EnforceRetention(destPath string, cfg config.RetentionConfig) {
 	}
 
 	core.PrintConsole(config.LogLevelVerbose, "[RETENTION] Marked %d snapshots for deletion", len(toDel))
-	
+
 	for i, name := range toDel {
 		p := filepath.Join(destPath, name)
 		core.PrintConsole(config.LogLevelVerbose, "[RETENTION] [%d/%d] Deleting: %s", i+1, len(toDel), p)
@@ -544,12 +547,12 @@ func EnforceRetention(destPath string, cfg config.RetentionConfig) {
 			core.PrintConsole(config.LogLevelVerbose, "[RETENTION] Successfully deleted %s", name)
 		}
 	}
-	
+
 	if len(toDel) > 0 {
 		core.PrintConsole(config.LogLevelDefault, "Retention deleted %d snapshots in %s", len(toDel), destPath)
 	} else {
 		core.PrintConsole(config.LogLevelVerbose, "[RETENTION] No snapshots to delete")
 	}
-	
+
 	core.PrintConsole(config.LogLevelVerbose, "[RETENTION] ====== Retention Complete ======")
 }
